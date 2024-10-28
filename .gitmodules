@@ -1,0 +1,3 @@
+[submodule "include/SLiM"]
+	path = include/SLiM
+	url = https://github.com/MesserLab/SLiM.git
