@@ -4,3 +4,6 @@
 [submodule "include/discoal"]
 	path = include/discoal
 	url = https://github.com/kr-colab/discoal.git
+[submodule "include/relate"]
+	path = include/relate
+	url = https://github.com/MyersGroup/relate.git
