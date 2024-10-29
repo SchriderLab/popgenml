@@ -1,3 +1,6 @@
 [submodule "include/SLiM"]
 	path = include/SLiM
 	url = https://github.com/MesserLab/SLiM.git
+[submodule "include/discoal"]
+	path = include/discoal
+	url = https://github.com/kr-colab/discoal.git
