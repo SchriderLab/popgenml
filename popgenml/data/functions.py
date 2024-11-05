@@ -8,10 +8,10 @@ import glob
 from skbio.tree import TreeNode
 import copy
 
-rscript_path = os.path.join(os.getcwd(), 'relate/bin/RelateFileFormats')
+rscript_path = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 rcmd = 'cd {3} && ' + rscript_path + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
 
-relate_path = os.path.join(os.getcwd(), 'relate/bin/Relate')
+relate_path = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
 relate_cmd = 'cd {6} && ' + relate_path + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
 
 def parse_line(line, s0, s1):
@@ -127,7 +127,7 @@ def parse_line(line, s0, s1):
     X = np.array(X)
     edges = edges[:X.shape[0]]
 
-    return root, start_snp
+    return root, start_snp, X, edges
 
 def read_anc(anc_file, pop_sizes = (40,0)):
     s0, s1 = pop_sizes
@@ -168,7 +168,7 @@ def read_anc(anc_file, pop_sizes = (40,0)):
     snps = []
     for ij in range(len(lines)):
         line = lines[ij]
-        root, snp = parse_line(line, s0, s1)
+        root, snp, _, _ = parse_line(line, s0, s1)
              
         snps.append(snp)
         
@@ -225,7 +225,6 @@ def relate(ifile, n_samples, mu, r, N, L):
     ms_file = os.path.join(temp_dir.name, 'sim.msOut')
     write_to_ms(ms_file, X, sites, [0])
     time.sleep(0.001)
-    
     
     tag = ms_file.split('/')[-1].split('.')[0]
     cmd_ = rcmd.format(os.path.abspath(ms_file), tag, L, odir)
