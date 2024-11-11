@@ -29,6 +29,8 @@ class BaseSimulator(object):
         self.diploid = diploid
         
         self.n_samples = n_samples
+        self.sample_size = sum(n_samples)
+        
         return
     
     # should return X, sites
@@ -40,12 +42,6 @@ class BaseSimulator(object):
         # simulate mutations, binary discrete model
         mutated_ts = msprime.sim_mutations(ts, rate=self.mu, model=msprime.BinaryMutationModel())
         
-        times = np.zeros((mutated_ts.num_trees, self.sample_size - 1))
-        
-        for ix in range(int(mutated_ts.num_trees)):
-            tree = mutated_ts.at_index(ix)
-            times[ix] = np.array(sorted([tree.time(u) for u in tree.nodes()], reverse = True))[:self.sample_size - 1]
-
         X = mutated_ts.genotype_matrix()
         X[X > 1] = 1
         X = X.T
@@ -59,6 +55,10 @@ class BaseSimulator(object):
     def simulate_fw(self, *args, method = 'true'):
         X, sites, s = self.simulate(*args)
         
+        sample_sizes = self.n_samples
+        if self.diploid:
+            sample_sizes = [2 * u for u in sample_sizes]
+        
         Fs = []
         Ws = []
         pop_vectors = []
@@ -70,47 +70,58 @@ class BaseSimulator(object):
             tables.sort()
     
             # should be an iteration here but need to be careful in general due to RAM
-            t = list(s.aslist())[0]
+            for t in s.aslist():
             
-            f = StringIO(t.as_newick())  
-            root = read(f, format="newick", into=TreeNode)
-            root.assign_ids()
-                    
-            populations = list(tables.nodes.population)
-            
-            tips = [u for u in root.postorder() if u.is_tip()]
-            for ix, t in enumerate(tips):
-                t.pop = populations[ix]
-                
-            children = root.children
-            t = max(tables.nodes.time)
-            
-            root.age = t
-            
-            while len(children) > 0:
-                _ = []
-                for c in children:
-                    
-                    c.age = c.parent.age - c.length
-                    if c.is_tip():
-                        c.age = 0.
-                    else:
-                        c.pop = -1
+                f = StringIO(t.as_newick())  
+                root = read(f, format="newick", into=TreeNode)
+                root.assign_ids()
                         
-                    _.extend(c.children)
+                populations = list(tables.nodes.population)
+                
+                tips = [u for u in root.postorder() if u.is_tip()]
+                for ix, t in enumerate(tips):
+                    t.pop = populations[ix]
                     
-                children = copy.copy(_)
-    
-    
-            F, W, pop_vector, t_coal = make_FW_rep(root, self.n_samples)
-            
+                children = root.children
+                t = max(tables.nodes.time)
+                
+                root.age = t
+                
+                while len(children) > 0:
+                    _ = []
+                    for c in children:
+                        
+                        c.age = c.parent.age - c.length
+                        if c.is_tip():
+                            c.age = 0.
+                        else:
+                            c.pop = -1
+                            
+                        _.extend(c.children)
+                        
+                    children = copy.copy(_)
+        
+        
+                F, W, pop_vector, t_coal = make_FW_rep(root, sample_sizes)
+                i, j = np.tril_indices(F.shape[0])
+                F = F[i, j]
+                
+                Fs.append(F)
+                Ws.append(W)
+                pop_vectors.append(pop_vector)
+                coal_times.append(t_coal)
+                
         # return the inferred tree sequence from Relate as a sequence of F and W condensed matrices
         elif method == 'relate':
+            Fs = []
+            Ws = []
+            pop_vectors = []
+            coal_times = []
+            
             n_samples = sum(self.n_samples)
          
             if self.diploid:
                 n_samples = n_samples // 2
-
             
             temp_dir = tempfile.TemporaryDirectory()
             
@@ -168,7 +179,7 @@ class BaseSimulator(object):
             
             temp_dir.cleanup()
             
-        return Fs, Ws, pop_vectors, coal_times
+        return Fs, Ws, pop_vectors, coal_times, s
         
 class BottleNeckSimulator(BaseSimulator):
     def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [40]):
@@ -190,11 +201,41 @@ class BottleNeckSimulator(BaseSimulator):
             samples = n_samples // 2,
             sequence_length=self.L,
             recombination_rate=self.r,
+            
             #mutation_rate=mutation_rate,
             demography=demography,
             #Ne=population_size
         )
         
+        return self.mutate_and_return_(ts)
+    
+class PopSplitSimulator(BaseSimulator):
+    def __init__(self, L = int(1e8), mu = 5.7e-9, r = 3.386e-9, diploid = True, n_samples = [22, 18]):
+        super().__init__(L, mu, r, diploid, n_samples)
+        
+    def simulate(self, Nanc, N0, N1, split_time):
+        samples = []
+        samples.append(msprime.SampleSet(self.n_samples[0], population = 'A', ploidy = 2))
+        samples.append(msprime.SampleSet(self.n_samples[1], population = 'B', ploidy = 2))
+        
+        demography = msprime.Demography()
+        demography.add_population(name="A", initial_size = N0, growth_rate = 0.)
+        demography.add_population(name="B", initial_size = N1, growth_rate = 0.)
+        demography.add_population(name="C", initial_size = Nanc, growth_rate = 0.)
+        demography.add_population_split(time = split_time, derived = ["A", "B"], ancestral = "C")
+        
+        ts = msprime.sim_ancestry(
+            #sample_size=2 * population_size,
+            samples = samples,
+            #additional_nodes=(msprime.NodeType.RECOMBINANT),
+            sequence_length=self.L,
+            recombination_rate=self.r,
+            #mutation_rate=mutation_rate,
+            demography=demography,
+            #coalescing_segments_only=False
+            #Ne=population_size
+        )
+    
         return self.mutate_and_return_(ts)
     
 class TwoPopMigrationSimulator(BaseSimulator):
@@ -219,6 +260,8 @@ class TwoPopMigrationSimulator(BaseSimulator):
         ts = msprime.sim_ancestry(
             #sample_size=2 * population_size,
             samples = samples,
+            additional_nodes=(
+                msprime.NodeType.RECOMBINANT),
             sequence_length=self.L,
             recombination_rate=self.r,
             #mutation_rate=mutation_rate,
