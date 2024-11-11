@@ -90,7 +90,7 @@ def main():
             
             print(X.shape, indices.shape)
     
-            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x, ii = indices, 
+            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x, ii = indices.astype(np.uint16), 
                                 times = times, edges = edges, pop = pop.astype(np.uint8), y = np.array([Nanc, N0, N1, T]))
         
 
