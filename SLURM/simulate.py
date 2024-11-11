@@ -38,7 +38,7 @@ def parse_args():
 def main():
     args = parse_args()
     
-    cmd = 'sbatch -t 16:00:00 --mem=16G --wrap "python3 src/simulations/simulate.py --n_replicates {0} --odir {1} --L {2}"'
+    cmd = 'sbatch -t 16:00:00 --mem=24G -n {0} --wrap "mpirun python3 src/simulations/simulate.py --n_replicates {0} --odir {1} --L {2}"'
     
     n_replicates = int(args.n_replicates)
     for ix in range(int(args.n_jobs)):

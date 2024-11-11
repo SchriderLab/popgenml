@@ -19,6 +19,7 @@ import time
 import msprime
 from stats import to_unique
 import networkx as nx
+from mpi4py import MPI
 
 def plot_tree_graph(t, pop, edges):
 
@@ -68,14 +69,17 @@ def parse_args():
     return args
 
 def main():
+    # configure MPI
+    comm = MPI.COMM_WORLD
     args = parse_args()
+    
     
     L = int(float(args.L))
     
     if args.model == "split":
         sim = PopSplitSimulator(L = L)
         
-        for ix in range(args.n_replicates):
+        for ix in range(0, args.n_replicates, comm.size):
             Nanc = np.random.uniform(50000, 150000)
             N0 = np.random.uniform(60000, 180000)
             N1 = np.random.uniform(9000, 31000)
