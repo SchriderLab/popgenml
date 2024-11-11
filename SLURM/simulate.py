@@ -40,12 +40,11 @@ def main():
     
     cmd = 'sbatch -t 16:00:00 --mem=16G --wrap "python3 src/simulations/simulate.py --n_replicates {0} --odir {1} --L {2}"'
     
-    n_per = int(args.n_per)
     n_replicates = int(args.n_replicates)
     for ix in range(int(args.n_jobs)):
         ofile = os.path.join(args.odir, '{0:05d}'.format(ix))
         
-        cmd_ = cmd.format(n_replicates, n_per, ofile, args.L)
+        cmd_ = cmd.format(n_replicates, ofile, args.L)
         
         print(cmd_)
         os.system(cmd_)
