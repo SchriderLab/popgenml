@@ -79,26 +79,26 @@ def main():
     if args.model == "split":
         sim = PopSplitSimulator(L = L)
         
-        for ix in range(0, args.n_replicates, comm.size):
-            Nanc = np.random.uniform(50000, 150000)
-            N0 = np.random.uniform(60000, 180000)
-            N1 = np.random.uniform(9000, 31000)
-            T = np.random.uniform(5000, 20000)
-            
-            print('simulating for: {}'.format([Nanc, N0, N1, T]))
-            
-            X, sites, ts = sim.simulate(Nanc, N0, N1, T)
-            
-            edges = np.array([ts.edges_parent, ts.edges_child]).T
-            times = ts.nodes_time
-            pop = ts.nodes_population
-            x, indices = to_unique(X)
-            
-            print(X.shape, indices.shape)
-    
-            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), 
-                                times = times, edges = edges, pop = pop.astype(np.uint8), y = np.array([Nanc, N0, N1, T]))
+        ix = comm.rank
+        Nanc = np.random.uniform(50000, 150000)
+        N0 = np.random.uniform(60000, 180000)
+        N1 = np.random.uniform(9000, 31000)
+        T = np.random.uniform(5000, 20000)
         
+        print('simulating for: {}'.format([Nanc, N0, N1, T]))
+        
+        X, sites, ts = sim.simulate(Nanc, N0, N1, T)
+        
+        edges = np.array([ts.edges_parent, ts.edges_child]).T
+        times = ts.nodes_time
+        pop = ts.nodes_population
+        x, indices = to_unique(X)
+        
+        print(X.shape, indices.shape)
+
+        np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), 
+                            times = times, edges = edges, pop = pop.astype(np.uint8), y = np.array([Nanc, N0, N1, T]))
+    
 
         """
         sys.exit()
