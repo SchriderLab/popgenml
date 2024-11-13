@@ -11,6 +11,11 @@ from torch.utils import data
 import torch.distributed as dist
 from torchvision import transforms, utils
 from tqdm import tqdm
+import sys
+# patch until package is finished
+sys.path.append('popgenml/data/')
+
+from simulators import TwoPopMigrationSimulator
 
 from data_loaders import ImgGenerator, ModelAwareImgGenerator, NPZImgGenerator
 
