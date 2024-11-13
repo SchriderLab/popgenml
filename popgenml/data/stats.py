@@ -13,7 +13,6 @@ def to_unique(X):
     indices = []
     for k in range(X.shape[1]):
         x = X[:,k]
-        #h = hashFor(x)
         h = ''.join(x.astype(str))
         if h in site_hist.keys():
             site_hist[h] += 1
@@ -23,12 +22,14 @@ def to_unique(X):
             ii[h] = ix
             
             ix += 1
-            
+        
+        # this site is the ith unique one found
         indices.append(ii[h])
         
     site_hist = {v: k for k, v in site_hist.items()}
     
     ii = np.argsort(list(site_hist.keys()))[::-1]
+    # resort the indices as well
     indices = [indices[u] for u in indices]
     
     v = sorted(list(site_hist.keys()), reverse = True)

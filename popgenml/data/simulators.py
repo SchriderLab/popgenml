@@ -271,5 +271,45 @@ class TwoPopMigrationSimulator(BaseSimulator):
         
         return self.mutate_and_return_(ts)
     
+class SecondaryContactSimulator(BaseSimulator):
+    def __init__(self, L = int(1e6), mu = 5.7e-9, r = 3.386e-9, diploid = True, n_samples = [22, 8]):
+        super().__init__(L, mu, r, diploid, n_samples)
     
+    
+    def simulate(self, Nanc, N_mainland, N_island, T_split, T_contact, m):
+        """
+        Simulates a population split with initial isolation, followed by secondary contact with migration.
+    
+        Parameters:
+            Nanc (float): Ancestral population size.
+            N_mainland (float): Mainland population size after split.
+            N_island (float): Island population size after split.
+            T_split (float): Time of initial population split in generations.
+            T_contact (float): Time of secondary contact and migration onset.
+            m (float): Migration rate between island and mainland populations.
+            mutation_rate (float): Mutation rate per base per generation.
+            recombination_rate (float): Recombination rate per base per generation.
+            sequence_length (float): Length of the simulated sequence.
+    
+        Returns:
+            mutated_ts (tskit.TreeSequence): Mutated tree sequence with split and secondary contact.
+        """
+        print("Starting population split with secondary contact simulation with parameters:")
+        print(f"  Nanc: {Nanc}, N_mainland: {N_mainland}, N_island: {N_island}, T_split: {T_split}, T_contact: {T_contact}, m: {m}")
+
+        # Define demography
+        # Define demography
+        demography = msprime.Demography()
+        demography.add_population(name="ancestral", initial_size=Nanc)
+        demography.add_population(name="mainland", initial_size=N_mainland)
+        demography.add_population(name="island", initial_size=N_island)
+    
+        # Define the population split at time T_split
+        demography.add_population_split(time=T_split, derived=["mainland", "island"], ancestral="ancestral")
+        demography.add_migration_rate_change(0., rate = m, source = "mainland", dest = "island")
+        demography.add_migration_rate_change(T_contact, rate = 0., source = "mainland", dest = "island")
+    
+        samples = []
+        samples.append(msprime.SampleSet(self.n_samples[0], population = 'mainland', ploidy = 2))
+        samples.append(msprime.SampleSet(self.n_samples[1], population = 'island', ploidy = 2))
         
