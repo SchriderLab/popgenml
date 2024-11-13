@@ -12,6 +12,7 @@ import numpy as np
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
 
+
 import cairosvg
 from PIL import Image
 from io import BytesIO
@@ -19,7 +20,7 @@ import time
 import msprime
 from stats import to_unique
 import networkx as nx
-from mpi4py import MPI
+#from mpi4py import MPI
 
 def plot_tree_graph(t, pop, edges):
 
@@ -37,6 +38,15 @@ def plot_tree_graph(t, pop, edges):
     nx.draw(G, pos, node_size = 0.5)
     plt.show()
     
+def to_cdf(t, bins):
+    t_hist, _ = np.histogram(t, bins)
+    
+    t_hist = np.array(t_hist, dtype = np.float32)
+    t_hist /= np.sum(t_hist)
+
+    t_hist = np.cumsum(t_hist)
+    
+    return t_hist
 # use this format to tell the parsers
 # where to insert certain parts of the script
 # ${imports}
@@ -70,7 +80,8 @@ def parse_args():
 
 def main():
     # configure MPI
-    comm = MPI.COMM_WORLD
+    
+    #comm = MPI.COMM_WORLD
     args = parse_args()
     
     
@@ -79,25 +90,41 @@ def main():
     if args.model == "split":
         sim = PopSplitSimulator(L = L)
         
-        ix = comm.rank
-        Nanc = np.random.uniform(50000, 150000)
-        N0 = np.random.uniform(60000, 180000)
-        N1 = np.random.uniform(9000, 31000)
-        T = np.random.uniform(5000, 20000)
-        
-        print('simulating for: {}'.format([Nanc, N0, N1, T]))
-        
-        X, sites, ts = sim.simulate(Nanc, N0, N1, T)
-        
-        edges = np.array([ts.edges_parent, ts.edges_child]).T
-        times = ts.nodes_time
-        pop = ts.nodes_population
-        x, indices = to_unique(X)
-        
-        print(X.shape, indices.shape)
-
-        np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), 
-                            times = times, edges = edges, pop = pop.astype(np.uint8), y = np.array([Nanc, N0, N1, T]))
+        time_bins = np.linspace(1., 12., 513)
+        for ix in range(args.n_replicates):
+            Nanc = np.random.uniform(50000, 150000)
+            N0 = np.random.uniform(15000, 150000)
+            N1 = np.random.uniform(15000, 150000)
+            T = np.random.uniform(5000, 20000)
+            
+            print('simulating for: {}'.format([Nanc, N0, N1, T]))
+            
+            X, sites, ts = sim.simulate(Nanc, N0, N1, T)
+            
+            #edges = np.array([ts.edges_parent, ts.edges_child]).T
+            times = ts.nodes_time
+            times = np.array(times, dtype = np.float32)
+            ii = np.where(times != 0)[0]
+            times = np.log(times[ii])
+            pop = ts.nodes_population[ii]
+                        
+            t0 = times[np.where((pop == 0) | (pop == 2))]
+            t1 = times[np.where((pop == 1) | (pop == 2))]
+    
+            t0 = to_cdf(t0, time_bins)
+            t1 = to_cdf(t1, time_bins)
+    
+            plt.plot(time_bins[:-1], t0)
+            plt.plot(time_bins[:-1], t1)
+            plt.show()
+            
+            pop = ts.nodes_population
+            x, indices = to_unique(X)
+            
+            print(X.shape, indices.shape)
+    
+            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), 
+                                y = np.array([Nanc, N0, N1, T]))
     
 
         """

@@ -3,6 +3,33 @@ import numpy as np
 
 from scipy.stats import beta
 from scipy.interpolate import interp1d
+import torch
+from collections import OrderedDict
+
+class PriorSampler(object):
+    def __init__(self, prior):
+        x = np.loadtxt(prior)
+        
+        names = x[:,0]
+        max_min_scale = list(map(tuple, x[:,1:]))
+    
+        self.prior = OrderedDict(zip(names, max_min_scale))
+            
+    def sample(self):
+        params = []
+        
+        for p in self.params.keys():
+            if type(self.params[p]) != tuple:
+                # assume float or integer
+                params.append(self.params[p])
+            else:
+                mi, ma, log_scale = self.params[p]
+                if log_scale == -1:
+                    params.append(np.random.uniform(mi, ma))
+                else:
+                    params.append(log_scale ** np.random.uniform(mi, ma))
+                    
+        return params
 
 class MSPrimeFWLoader(object):
     def __init__(self, prior, simulator, batch_size = 32, method = 'relate', cdf = None, n_per = 2):
@@ -17,7 +44,7 @@ class MSPrimeFWLoader(object):
             names = x[:,0]
             max_min_scale = list(map(tuple, x[:,1:]))
         
-            prior = dict(zip(names, max_min_scale))
+            prior = OrderedDict(zip(names, max_min_scale))
                 
         self.prior = prior
         self.method = method
@@ -85,15 +112,40 @@ class MSPrimeFWLoader(object):
                 else:
                     params.append(log_scale ** np.random.uniform(mi, ma))
                     
-        F, W, pop_vectors, coal_times = self.simulator.simulate_fw(*params, method = self.method)
+        F, W, pop_mat, coal_times = self.simulator.simulate_fw(*params, method = self.method)
         W = np.array(W)
         F = np.array(F)
+        pop_mat = np.array(pop_mat)
         
         W = np.log(W + 1e-12)
 
-        D[D < self.cdf.x[0]] = self.cdf.x[0]
-        D[D > self.cdf.x[-1]] = self.cdf.x[-1]
-
-        D = self.cdf(D)
+        W = np.clip(W, self.cdf.x[0], self.cdf.x[-1])
+        W = self.cdf(W)
+        
+        i, j = np.triu_indices(self.f_size)
+        i_, j_ = np.tril_indices(self.f_size)
+        
+        X = []
+        for ix in range(len(W)):
+            d = W[ix]
+            f = F[ix]
+            
+            im = np.zeros((self.size, self.size) + (3, ))
+            
+            if pop_mat is None:
+                im[j_, i_,0] = f
+                im[i_, j_, 0] = f
+                im[j_, i_, 1] = d                
+                im[j_, i_, 2] = d ** 0.5
+            else:
+                im[j_,i_,0] = f
+                im[i_,j_,0] = f
+                im[j_, i_, 1] = d                
+                im[:, :, 2] = (self.p_im.im(pop_mat[ix]) * 1.5 + 100) / 255
+            
+            X.append(im.transpose(2, 0, 1))
+            
+        X = torch.FloatTensor(np.array(X))
+        
         
         
