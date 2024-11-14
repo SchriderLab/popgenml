@@ -22,7 +22,6 @@ sys.path.append('popgenml/models')
 
 from simulators import PopSplitSimulator, BottleNeckSimulator, SecondaryContactSimulator
 from layers import TransformerConv
-from mpi4py import MPI
 import time
 import argparse
 import logging
