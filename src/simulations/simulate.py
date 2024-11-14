@@ -7,7 +7,7 @@ import sys
 # patch until the package is installed
 sys.path.append('popgenml/data')
 
-from simulators import PopSplitSimulator, BottleNeckSimulator
+from simulators import PopSplitSimulator, BottleNeckSimulator, SecondaryContactSimulator
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
@@ -21,6 +21,7 @@ import msprime
 from stats import to_unique
 import networkx as nx
 from scipy.interpolate import UnivariateSpline
+
 
 from mpi4py import MPI
 
@@ -121,8 +122,6 @@ def main():
             
             x, indices = to_unique(X)
             
-            print(X.shape, indices.shape)
-    
             np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), 
                                 y = np.array([Nanc, N0, N1, T]))
     
@@ -173,7 +172,6 @@ def main():
             
             X, sites, ts = sim.simulate(N0, N1, T)
             
-            print(X.shape)
             times = ts.nodes_time
             times = np.array(times, dtype = np.float32)
             ii = np.where(times != 0)[0]
@@ -185,6 +183,33 @@ def main():
             np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), y1 = times,
                                 y = np.array([N0, N1, T]))
 
+        
+    if args.model == "mig":
+        sim = SecondaryContactSimulator(L = L)
+        
+        for ix in range(comm.rank, args.n_replicates, comm.size):
+            # Set parameters based on specified ranges
+            Nanc = np.random.uniform(12000, 120000)
+            N_mainland = np.random.uniform(25000, 250000)
+            N_island = np.random.uniform(5000, 50000)
+            T_split = np.random.uniform(10000, 25000)
+            T_contact = np.random.uniform(10, 1000)
+            m = 10 ** np.random.uniform(-5, -2)
+            
+            X, sites, ts = sim.simulate(Nanc, N_mainland, N_island, T_split, T_contact, m)
+            
+            times = ts.nodes_time
+            times = np.array(times, dtype = np.float32)
+            ii = np.where(times != 0)[0]
+            times = np.log(times[ii])
+            
+            times = to_cdf(times, time_bins)
+            
+            x, indices = to_unique(X)
+            
+            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), y1 = times,
+                                y = np.array([Nanc, N_mainland, N_island, T_split, T_contact, m]))
+        
         
         """
         sys.exit()
