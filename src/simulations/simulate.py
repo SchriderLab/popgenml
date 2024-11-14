@@ -109,7 +109,7 @@ def main():
     if args.model == "split":
         sim = PopSplitSimulator(L = L)
     
-        for ix in range(args.n_replicates):
+        for ix in range(comm.rank, args.n_replicates, comm.size):
             Nanc = np.random.uniform(50000, 150000)
             N0 = np.random.uniform(15000, 150000)
             N1 = np.random.uniform(15000, 150000)
@@ -119,24 +119,6 @@ def main():
             
             X, sites, ts = sim.simulate(Nanc, N0, N1, T)
             
-            #edges = np.array([ts.edges_parent, ts.edges_child]).T
-            times = ts.nodes_time
-            times = np.array(times, dtype = np.float32)
-            ii = np.where(times != 0)[0]
-            times = np.log(times[ii])
-            pop = ts.nodes_population[ii]
-                        
-            t0 = times[np.where((pop == 0) | (pop == 2))]
-            t1 = times[np.where((pop == 1) | (pop == 2))]
-    
-            t0 = to_cdf(t0, time_bins)
-            t1 = to_cdf(t1, time_bins)
-    
-            plt.plot(time_bins[:-1], t0)
-            plt.plot(time_bins[:-1], t1)
-            plt.show()
-            
-            pop = ts.nodes_population
             x, indices = to_unique(X)
             
             print(X.shape, indices.shape)
@@ -191,6 +173,7 @@ def main():
             
             X, sites, ts = sim.simulate(N0, N1, T)
             
+            print(X.shape)
             times = ts.nodes_time
             times = np.array(times, dtype = np.float32)
             ii = np.where(times != 0)[0]
