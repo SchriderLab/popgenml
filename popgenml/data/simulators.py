@@ -272,7 +272,7 @@ class TwoPopMigrationSimulator(BaseSimulator):
         return self.mutate_and_return_(ts)
     
 class SecondaryContactSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 5.7e-9, r = 3.386e-9, diploid = True, n_samples = [22, 8]):
+    def __init__(self, L = int(1e6), mu = 5.4e-9, r = 3.386e-9, diploid = True, n_samples = [22, 8]):
         super().__init__(L, mu, r, diploid, n_samples)
     
     
@@ -308,8 +308,21 @@ class SecondaryContactSimulator(BaseSimulator):
         demography.add_population_split(time=T_split, derived=["mainland", "island"], ancestral="ancestral")
         demography.add_migration_rate_change(0., rate = m, source = "mainland", dest = "island")
         demography.add_migration_rate_change(T_contact, rate = 0., source = "mainland", dest = "island")
+        demography.sort_events()
     
         samples = []
         samples.append(msprime.SampleSet(self.n_samples[0], population = 'mainland', ploidy = 2))
         samples.append(msprime.SampleSet(self.n_samples[1], population = 'island', ploidy = 2))
+        # simulate ancestry
+        ts = msprime.sim_ancestry(
+            #sample_size=2 * population_size,
+            samples = samples,
+
+            sequence_length=self.L,
+            recombination_rate=self.r,
+            #mutation_rate=mutation_rate,
+            demography=demography,
+            #Ne=population_size
+        )
         
+        return self.mutate_and_return_(ts)
