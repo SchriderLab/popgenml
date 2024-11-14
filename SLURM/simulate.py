@@ -45,7 +45,7 @@ def main():
     for ix in range(int(args.n_jobs)):
         ofile = os.path.join(args.odir, '{0:05d}'.format(ix))
         
-        cmd_ = cmd.format(n_replicates, ofile, args.L)
+        cmd_ = cmd.format(n_replicates, ofile, args.L, args.model)
         
         print(cmd_)
         os.system(cmd_)
