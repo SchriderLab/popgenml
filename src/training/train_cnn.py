@@ -53,8 +53,11 @@ class NPZLoader(object):
         y = []
 
         for ii_ in ii:
-            x = np.load(self.ifiles[ii_])
-            x_ = x['x']
+            try:
+                x = np.load(self.ifiles[ii_])
+                x_ = x['x']
+            except:
+                continue
             
             # shuffle data
             ii0 = list(range(44))
