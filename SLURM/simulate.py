@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument("--L", default = "1e8")
     
     parser.add_argument("--n_replicates", default = "20")
+    parser.add_argument("--model", default = "pop_split1")
 
     parser.add_argument("--odir", default = "None")
     args = parser.parse_args()
@@ -38,7 +39,7 @@ def parse_args():
 def main():
     args = parse_args()
     
-    cmd = 'sbatch -t 16:00:00 --mem=24G -n {0} --wrap "mpirun python3 src/simulations/simulate.py --n_replicates {0} --odir {1} --L {2}"'
+    cmd = 'sbatch -t 16:00:00 --mem=24G -n 24 --wrap "mpirun python3 src/simulations/simulate.py --n_replicates {0} --odir {1} --L {2} --model {3}"'
     
     n_replicates = int(args.n_replicates)
     for ix in range(int(args.n_jobs)):

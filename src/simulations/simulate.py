@@ -7,7 +7,7 @@ import sys
 # patch until the package is installed
 sys.path.append('popgenml/data')
 
-from simulators import PopSplitSimulator
+from simulators import PopSplitSimulator, BottleNeckSimulator
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
@@ -20,7 +20,9 @@ import time
 import msprime
 from stats import to_unique
 import networkx as nx
-#from mpi4py import MPI
+from scipy.interpolate import UnivariateSpline
+
+from mpi4py import MPI
 
 def plot_tree_graph(t, pop, edges):
 
@@ -47,6 +49,22 @@ def to_cdf(t, bins):
     t_hist = np.cumsum(t_hist)
     
     return t_hist
+
+def to_count(x, t, n = 40):    
+    x = np.digitize(x, t)
+    
+    ret = np.zeros((x.shape[0], len(t)))
+    
+    for k in range(x.shape[0]):
+        ret[k,x[k] - 1] += 1
+    
+    ret = np.cumsum(ret, axis = -1).astype(np.float32)
+    ret /= (n - 1)
+
+    ret = np.mean(ret, 0)      
+          
+    return ret
+      
 # use this format to tell the parsers
 # where to insert certain parts of the script
 # ${imports}
@@ -81,16 +99,16 @@ def parse_args():
 def main():
     # configure MPI
     
-    #comm = MPI.COMM_WORLD
+    comm = MPI.COMM_WORLD
     args = parse_args()
     
     
     L = int(float(args.L))
     
+    time_bins = np.linspace(4, 12, 1025)
     if args.model == "split":
         sim = PopSplitSimulator(L = L)
-        
-        time_bins = np.linspace(1., 12., 513)
+    
         for ix in range(args.n_replicates):
             Nanc = np.random.uniform(50000, 150000)
             N0 = np.random.uniform(15000, 150000)
@@ -126,7 +144,65 @@ def main():
             np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), 
                                 y = np.array([Nanc, N0, N1, T]))
     
+    if args.model == "bottle":
+        sim = BottleNeckSimulator(L = L)
+        
+        N1 = np.random.uniform(50000, 150000)
+        N0 = N1 * np.random.uniform(0.03, 0.12)
+        T = np.random.uniform(5000, 40000)
+        
+        X, sites, ts = sim.simulate(N0, N1, T)
+        
+        times = ts.nodes_time
+        times = np.array(times, dtype = np.float32)
+        ii = np.where(times != 0)[0]
+        times = np.log(times[ii])
+        
+        times = to_cdf(times, time_bins)
+        
+    if args.model == "split_pop1":
+        sim = BottleNeckSimulator(mu = 5.7e-9, r = 3.386e-9, L = L, n_samples = [22])
+        
+        for ix in range(comm.rank, args.n_replicates, comm.size):
+            N1 = np.random.uniform(50000, 150000)
+            N0 = np.random.uniform(15000, 150000)
+            T = np.random.uniform(5000, 40000)
+            
+            X, sites, ts = sim.simulate(N0, N1, T)
+            
+            times = ts.nodes_time
+            times = np.array(times, dtype = np.float32)
+            ii = np.where(times != 0)[0]
+            times = np.log(times[ii])
+            
+            times = to_cdf(times, time_bins)
+            x, indices = to_unique(X)
+            
+            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), y1 = times,
+                                y = np.array([N0, N1, T]))
+            
+    if args.model == "split_pop2":
+        sim = BottleNeckSimulator(mu = 5.7e-9, r = 3.386e-9, L = L, n_samples = [18])
+        
+        for ix in range(comm.rank, args.n_replicates, comm.size):
+            N1 = np.random.uniform(50000, 150000)
+            N0 = np.random.uniform(15000, 150000)
+            T = np.random.uniform(5000, 40000)
+            
+            X, sites, ts = sim.simulate(N0, N1, T)
+            
+            times = ts.nodes_time
+            times = np.array(times, dtype = np.float32)
+            ii = np.where(times != 0)[0]
+            times = np.log(times[ii])
+            
+            times = to_cdf(times, time_bins)
+            x, indices = to_unique(X)
+            
+            np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), y1 = times,
+                                y = np.array([N0, N1, T]))
 
+        
         """
         sys.exit()
         
