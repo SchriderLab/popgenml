@@ -182,7 +182,7 @@ class BaseSimulator(object):
         return Fs, Ws, pop_vectors, coal_times, s
         
 class BottleNeckSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [40]):
+    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [20]):
         super().__init__(L, mu, r, diploid, n_samples)
         
     # population size up to T = N0
@@ -198,7 +198,7 @@ class BottleNeckSimulator(BaseSimulator):
         # simulate ancestry
         ts = msprime.sim_ancestry(
             #sample_size=2 * population_size,
-            samples = n_samples // 2,
+            samples = sum(self.n_samples),
             sequence_length=self.L,
             recombination_rate=self.r,
             
