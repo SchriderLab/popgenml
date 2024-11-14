@@ -12,6 +12,11 @@ import tempfile
 import os
 import glob
 
+import logging
+
+# to quiet down msprime
+logging.basicConfig(level = logging.ERROR)
+
 class BaseSimulator(object):
     # L is the size of the simulation in base pairs
     # specify mutation rate
@@ -66,24 +71,25 @@ class BaseSimulator(object):
         
         # return the ground truth tree sequence as a sequence of as a sequence of F and W condensed matrices
         if method == 'true':
-            tables = s.dump_tables()
-            tables.sort()
-    
+
+            tree = s.first()
+            ret = True
             # should be an iteration here but need to be careful in general due to RAM
-            for t in s.aslist():
+            while ret:
+
             
-                f = StringIO(t.as_newick())  
+                f = StringIO(tree.as_newick())  
                 root = read(f, format="newick", into=TreeNode)
                 root.assign_ids()
                         
-                populations = list(tables.nodes.population)
+                populations = [tree.population(u) for u in tree.postorder()]
                 
                 tips = [u for u in root.postorder() if u.is_tip()]
-                for ix, t in enumerate(tips):
-                    t.pop = populations[ix]
+                for ix, t_ in enumerate(tips):
+                    t_.pop = populations[ix]
                     
                 children = root.children
-                t = max(tables.nodes.time)
+                t = max([tree.time(u) for u in tree.postorder()])
                 
                 root.age = t
                 
@@ -110,6 +116,8 @@ class BaseSimulator(object):
                 Ws.append(W)
                 pop_vectors.append(pop_vector)
                 coal_times.append(t_coal)
+                
+                ret = tree.next()
                 
         # return the inferred tree sequence from Relate as a sequence of F and W condensed matrices
         elif method == 'relate':
@@ -179,7 +187,7 @@ class BaseSimulator(object):
             
             temp_dir.cleanup()
             
-        return Fs, Ws, pop_vectors, coal_times, s
+        return Fs, Ws, pop_vectors, coal_times, X, sites, s
         
 class BottleNeckSimulator(BaseSimulator):
     def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [20]):
@@ -294,9 +302,6 @@ class SecondaryContactSimulator(BaseSimulator):
         Returns:
             mutated_ts (tskit.TreeSequence): Mutated tree sequence with split and secondary contact.
         """
-        print("Starting population split with secondary contact simulation with parameters:")
-        print(f"  Nanc: {Nanc}, N_mainland: {N_mainland}, N_island: {N_island}, T_split: {T_split}, T_contact: {T_contact}, m: {m}")
-
         # Define demography
         # Define demography
         demography = msprime.Demography()
