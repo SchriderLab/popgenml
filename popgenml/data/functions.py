@@ -271,7 +271,7 @@ def relate(ifile, n_samples, mu, r, N, L):
 
 def make_FW_rep(root, sample_sizes):
     if len(sample_sizes) > 1:
-        topo_tips = [u for u in root.levelorder() if u.is_tip()]
+        topo_tips = [u for u in root.postorder() if u.is_tip()]
         topo_ids = [u.id for u in topo_tips]
     
         pop_vector = [u.pop for u in topo_tips]

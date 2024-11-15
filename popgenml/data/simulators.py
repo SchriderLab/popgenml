@@ -13,7 +13,7 @@ import os
 import glob
 
 import logging
-
+import matplotlib.pyplot as plt
 # to quiet down msprime
 logging.basicConfig(level = logging.ERROR)
 
@@ -82,7 +82,7 @@ class BaseSimulator(object):
                 root = read(f, format="newick", into=TreeNode)
                 root.assign_ids()
                         
-                populations = [tree.population(u) for u in tree.postorder()]
+                populations = [tree.population(u) for u in tree.postorder() if tree.is_leaf(u)]
                 
                 tips = [u for u in root.postorder() if u.is_tip()]
                 for ix, t_ in enumerate(tips):
@@ -107,8 +107,8 @@ class BaseSimulator(object):
                         
                     children = copy.copy(_)
         
-        
-                F, W, pop_vector, t_coal = make_FW_rep(root, sample_sizes)
+                pop_vector = np.array(populations)
+                F, W, _, t_coal = make_FW_rep(root, sample_sizes)
                 i, j = np.tril_indices(F.shape[0])
                 F = F[i, j]
                 
@@ -268,13 +268,13 @@ class TwoPopMigrationSimulator(BaseSimulator):
         ts = msprime.sim_ancestry(
             #sample_size=2 * population_size,
             samples = samples,
-            additional_nodes=(
-                msprime.NodeType.RECOMBINANT),
+
             sequence_length=self.L,
             recombination_rate=self.r,
             #mutation_rate=mutation_rate,
             demography=demography,
             #Ne=population_size
+            ploidy = 1
         )
         
         return self.mutate_and_return_(ts)

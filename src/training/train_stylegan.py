@@ -17,7 +17,7 @@ sys.path.append('popgenml/data/')
 
 from simulators import TwoPopMigrationSimulator
 
-from data_loaders import ImgGenerator, ModelAwareImgGenerator, NPZImgGenerator
+from data_loaders import MSPrimeFWLoader
 
 try:
     import wandb
@@ -90,16 +90,7 @@ import torch.nn.functional as F
 import numpy as np
 
 import itertools
-import matplotlib
-matplotlib.use('Agg')
-
 import matplotlib.pyplot as plt
-from data_loaders import ManifoldNoise
-
-import sys
-sys.path.append('src/data')
-
-from msprime_simulators import FWSimulator
 
 class OrthogonalProjectionLoss(nn.Module):
     def __init__(self, gamma=0.5):
@@ -204,8 +195,6 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
     if args.manifold == "None":
         args.manifold = None
 
-    noise_generator = ManifoldNoise(args.manifold, args.latent, batch_size = args.batch, use_manifold = args.use_manifold)
-
     if args.distributed:
         g_module = generator.module
         d_module = discriminator.module
@@ -223,7 +212,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
     if args.augment and args.augment_p == 0:
         ada_augment = AdaptiveAugment(args.ada_target, args.ada_length, 8, device)
 
-    sample_z, _ = noise_generator.get_batch(args.n_sample)
+    sample_z = torch.randn(args.n_samples, args.latent)
     sample_z = sample_z.to(device)
     
     result = dict()
@@ -244,7 +233,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         os.path.join(args.odir, "sample/reals.png"),
         nrow=int(args.n_sample ** 0.5),
         normalize=True,
-        range = (-1., 1.)
+        value_range=(-1, 1)
     )
     
     
@@ -273,7 +262,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                     print("now training on an equal mixture of {} models...".format(len(allowed)))
                     sys.stdout.flush()
 
-        noise, indices = noise_generator.get_batch(args.batch)
+        noise = torch.randn(args.batch, args.latent)
         noise = noise.to(device)
 
         real_img = loader.get_batch()
@@ -349,9 +338,8 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         requires_grad(generator, True)
         requires_grad(discriminator, False)
 
-        noise, _ = noise_generator.get_batch(args.batch)
+        noise = torch.randn(args.batch, args.latent)
         noise = noise.to(device)
-        #c_fake = c_fake.to(device)
         
         fake_img = generator(noise)
         fake_pred = discriminator(fake_img)        
@@ -368,9 +356,8 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
 
         if g_regularize:
             path_batch_size = max(1, args.batch // args.path_batch_shrink)
-            z, _ = noise_generator.get_batch(path_batch_size)
+            z = torch.randn(path_batch_size, args.latent)
             z = z.to(device)
-            z.requires_grad = True
             
             fake_img, latents = generator(z, return_latents = True)
             
@@ -446,7 +433,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                         os.path.join(args.odir, f"sample/{str(i).zfill(6)}.png"),
                         nrow=int(args.n_sample ** 0.5),
                         normalize=True,
-                        range = (-1., 1.)
+                        value_range=(-1, 1)
                     )
                     
                     sys.stdout.flush()
@@ -628,6 +615,7 @@ if __name__ == "__main__":
     parser.add_argument("--im_depth", default = "8", help = "8 or 16 bit image")
     
     args = parser.parse_args()
+    
     if args.odir != "None":
         if not os.path.exists(args.odir):
             os.system('mkdir -p {}'.format(args.odir))
@@ -635,14 +623,6 @@ if __name__ == "__main__":
     os.system('mkdir -p {}'.format(os.path.join(args.odir, 'sample')))
     os.system('mkdir -p {}'.format(os.path.join(args.odir, 'checkpoint')))
     os.system('mkdir -p {}'.format(os.path.join(args.odir, 'sfs')))
-
-    n_gpu = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
-    args.distributed = n_gpu > 1
-
-    if args.distributed:
-        torch.cuda.set_device(args.local_rank)
-        torch.distributed.init_process_group(backend="nccl", init_method="env://")
-        synchronize()
 
     #args.latent = 512
     #args.n_mlp = 8
@@ -726,10 +706,11 @@ if __name__ == "__main__":
         drop_last=True,
     )
     """
-    loader = NPZImgGenerator(args.path, args.cdf, batch_size = args.batch, size = args.size, f_size = int(args.f_size))
-    print(loader)
+    sim = TwoPopMigrationSimulator(L = int(1e4))
+    loader = MSPrimeFWLoader('priors/migration.csv', sim, batch_size = args.batch)
 
     if get_rank() == 0 and wandb is not None and args.wandb:
         wandb.init(project="stylegan 2")
 
+    
     train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, device)
