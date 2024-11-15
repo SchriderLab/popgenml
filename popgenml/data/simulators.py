@@ -36,6 +36,12 @@ class BaseSimulator(object):
         self.n_samples = n_samples
         self.sample_size = sum(n_samples)
         
+        self.relate_path = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
+        rscript_path = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
+
+        self.rcmd = 'cd {3} && ' + rscript_path + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
+        self.relate_cmd = 'cd {6} && ' + self.relate_path + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
+        
         return
     
     # should return X, sites
