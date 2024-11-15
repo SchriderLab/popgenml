@@ -195,13 +195,9 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
     if args.manifold == "None":
         args.manifold = None
 
-    if args.distributed:
-        g_module = generator.module
-        d_module = discriminator.module
 
-    else:
-        g_module = generator
-        d_module = discriminator
+    g_module = generator
+    d_module = discriminator
 
     mse_loss = nn.MSELoss()
 
@@ -684,20 +680,6 @@ if __name__ == "__main__":
         g_optim.load_state_dict(ckpt["g_optim"])
         d_optim.load_state_dict(ckpt["d_optim"])
 
-    if args.distributed:
-        generator = nn.parallel.DistributedDataParallel(
-            generator,
-            device_ids=[args.local_rank],
-            output_device=args.local_rank,
-            broadcast_buffers=False,
-        )
-
-        discriminator = nn.parallel.DistributedDataParallel(
-            discriminator,
-            device_ids=[args.local_rank],
-            output_device=args.local_rank,
-            broadcast_buffers=False,
-        )
 
     """
     dataset = ImageFolderDataset(args.path)
