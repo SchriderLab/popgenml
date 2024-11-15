@@ -612,6 +612,8 @@ if __name__ == "__main__":
     parser.add_argument("--f_size", default = "128")
     parser.add_argument("--c_dim", default = 2) # discriminator c_dim, initially unused in this script, for later
     
+    parser.add_argument("--prior", default = "priors/migration.csv")
+    
     parser.add_argument("--im_depth", default = "8", help = "8 or 16 bit image")
     
     args = parser.parse_args()
@@ -707,7 +709,7 @@ if __name__ == "__main__":
     )
     """
     sim = TwoPopMigrationSimulator(L = int(1e4))
-    loader = MSPrimeFWLoader('priors/migration.csv', sim, batch_size = args.batch)
+    loader = MSPrimeFWLoader(args.prior, sim, batch_size = args.batch)
 
     if get_rank() == 0 and wandb is not None and args.wandb:
         wandb.init(project="stylegan 2")
