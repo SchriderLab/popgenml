@@ -71,7 +71,7 @@ class NPZLoader(object):
             X.append(x_)
 
             y_ = x['y']
-            y_ = np.array([y_[1], y_[2], y_[4], np.log10(y_[5])])
+            y_ = np.array([y_[1], y_[2], y_[3], y_[4], np.log10(y_[5])])
             y.append(y_)
         return X, y
 
@@ -91,7 +91,7 @@ class NPZLoader(object):
             X.append(x_)
 
             y_ = x['y']
-            y_ = np.array([y_[1], y_[2], y_[4], np.log10(y_[5])])
+            y_ = np.array([y_[1], y_[2], y_[3], y_[4], np.log10(y_[5])])
             y.append(y_)
         
         return X, y
@@ -216,13 +216,13 @@ def main():
     args = parse_args()
     device = torch.device('cuda')
     
-    mean_y = np.array([(25000 + 250000) / 2., (5000 + 50000) / 2., (10 + 1000) / 2., -3.5])
-    std_y = np.array([(25000 - 250000), (5000 - 50000), (10 - 1000), 3.]) * (np.sqrt(12) ** -1)
+    mean_y = np.array([(25000 + 250000) / 2., (5000 + 50000) / 2., (10000 + 25000) / 2., (10 + 1000) / 2., -3.5])
+    std_y = np.array([(25000 - 250000), (5000 - 50000), (10000 - 25000), (10 - 1000), 3.]) * (np.sqrt(12) ** -1)
     
     mean_y = torch.FloatTensor(mean_y).unsqueeze(0).to(device)
     std_y = torch.FloatTensor(std_y).unsqueeze(0).to(device)
     
-    model = TransformerConv(61, 4).to(device)
+    model = TransformerConv(61, 5).to(device)
     
     if args.weights != "None":
         model.load_state_dict(torch.load(args.weights))
