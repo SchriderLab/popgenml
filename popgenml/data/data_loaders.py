@@ -163,7 +163,7 @@ class MSPrimeFWLoader(object):
             
         return torch.FloatTensor(np.array(X))
     
-    def compute_cdf(self, n_samples = 256, n_bins = 1024):
+    def compute_cdf(self, n_samples = 1024, n_bins = 1024):
         print('computing cdf...')
         
         mins = []
