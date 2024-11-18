@@ -146,9 +146,12 @@ class BaseSimulator(object):
             
             ms_file = os.path.join(temp_dir.name, 'sim.vcf')
             
-            f = open(os.path.join(temp_dir.name, 'sim.vcf'), 'w')
-            s.write_vcf(f, allow_position_zero = True)
-            f.close()
+            try:
+                f = open(os.path.join(temp_dir.name, 'sim.vcf'), 'w')
+                s.write_vcf(f)
+                f.close()
+            except:
+                return None
             
             tag = ms_file.split('/')[-1].split('.')[0]
             cmd_ = self.rcmd.format('sim.haps', 'sim.sample', '../sim', odir) + ' >/dev/null 2>&1'
