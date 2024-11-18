@@ -71,7 +71,7 @@ def parse_line(line, s0, s1):
         
     root = root.children[0]
     T_present = [u for u in root.traverse() if u.is_tip()]
-    T_names = sorted([int(u.name) for u in root.traverse() if u.is_tip()])
+    T_names = sorted([int(u.name) for u in root.postorder() if u.is_tip()])
     
     data = dict()
     
@@ -86,6 +86,11 @@ def parse_line(line, s0, s1):
         for node in T_names:
             data[node] = np.array([0., 1., 0., mut_dict[node]])
     
+    if s1 > 0:
+        pop_vector = [data[u][1] for u in [int(u.name) for u in root.postorder() if u.is_tip()]]
+    else:
+        pop_vector = None
+
     edges = []
     while len(T_present) > 0:
         _ = []
@@ -118,6 +123,7 @@ def parse_line(line, s0, s1):
         T_present = copy.copy(_)
         
     X = []
+
     for node in nodes:
         X.append(data[node])
         sk_nodes[node].age = data[node][0]
@@ -127,7 +133,7 @@ def parse_line(line, s0, s1):
     X = np.array(X)
     edges = edges[:X.shape[0]]
 
-    return root, start_snp, X, edges
+    return root, start_snp, X, edges, pop_vector
 
 def read_anc(anc_file, pop_sizes = (40,0)):
     s0, s1 = pop_sizes
@@ -168,11 +174,11 @@ def read_anc(anc_file, pop_sizes = (40,0)):
     snps = []
     for ij in range(len(lines)):
         line = lines[ij]
-        root, snp, _, _ = parse_line(line, s0, s1)
+        root, snp, _, _, pop_vector = parse_line(line, s0, s1)
              
         snps.append(snp)
         
-        F, W, pop_vector, t_coal = make_FW_rep(root, sample_sizes)
+        F, W, _, t_coal = make_FW_rep(root, sample_sizes)
         coal_times.append(t_coal)
         
         i, j = np.tril_indices(F.shape[0])
@@ -189,7 +195,7 @@ def read_anc(anc_file, pop_sizes = (40,0)):
     
     anc_file.close()
     
-    return Fs, Ws, snps, np.array(coal_times)
+    return Fs, Ws, snps, pop_vectors, np.array(coal_times)
 
 def write_to_ms(ofile, X, sites, params):
     ofile = open(ofile, 'w')

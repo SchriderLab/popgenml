@@ -489,7 +489,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="StyleGAN2 trainer")
 
-    parser.add_argument("path", type=str, help="path to the lmdb dataset")
     parser.add_argument('--arch', type=str, default='swagan', help='model architectures (stylegan2 | swagan)')
     parser.add_argument(
         "--iter", type=int, default=800000, help="total training iterations"
@@ -611,6 +610,7 @@ if __name__ == "__main__":
     parser.add_argument("--prior", default = "priors/migration.csv")
     
     parser.add_argument("--im_depth", default = "8", help = "8 or 16 bit image")
+    parser.add_argument("--method", default = "true")
     
     args = parser.parse_args()
     
@@ -691,8 +691,9 @@ if __name__ == "__main__":
     )
     """
     sim = TwoPopMigrationSimulator(L = int(1e4))
-    loader = MSPrimeFWLoader(args.prior, sim, batch_size = args.batch)
-
+    loader = MSPrimeFWLoader(args.prior, sim, batch_size = args.batch, method = args.method)
+    pickle.dump({'cdf' : loader.cdf}, open(os.path.join(args.odir, 'cdf.pkl'), 'wb'))
+    
     if get_rank() == 0 and wandb is not None and args.wandb:
         wandb.init(project="stylegan 2")
 

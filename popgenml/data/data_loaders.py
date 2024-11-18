@@ -159,11 +159,14 @@ class MSPrimeFWLoader(object):
     def get_batch(self):
         X = []
         for k in range(self.batch_size // 2):
-            X.extend(self.get_replicate_())
+            _ = self.get_replicate_()
+            if _ is not None:
+            
+                X.extend(self.get_replicate_())
             
         return torch.FloatTensor(np.array(X))
     
-    def compute_cdf(self, n_samples = 1024, n_bins = 1024):
+    def compute_cdf(self, n_samples = 128, n_bins = 1024):
         print('computing cdf...')
         
         mins = []
@@ -171,22 +174,25 @@ class MSPrimeFWLoader(object):
         
         for ix in range(n_samples):
             W = self.get_W_()
-            W = np.array(W)
+            if W is not None:
+                W = np.array(W)
+                
+                W = np.log(W + 1e-12)
+                maxs.append(np.max(W))
+                mins.append(np.min(W))
             
-            W = np.log(W + 1e-12)
-            maxs.append(np.max(W))
-            mins.append(np.min(W))
-        
         bins = np.linspace(np.min(mins) - 1, np.max(maxs) + 1, n_bins + 1)
         h = np.zeros(len(bins) - 1)
         
         for ix in range(n_samples):
             W = self.get_W_()
-            W = np.array(W)
             
-            W = np.log(W + 1e-12)
-        
-            h += np.histogram(W.flatten(), bins, density = True)[0]
+            if W is not None:
+                W = np.array(W)
+                
+                W = np.log(W + 1e-12)
+            
+                h += np.histogram(W.flatten(), bins, density = True)[0]
 
         x = bins[:-1] + np.diff(bins) / 2.
 
@@ -218,7 +224,12 @@ class MSPrimeFWLoader(object):
                 else:
                     params.append(log_scale ** np.random.uniform(mi, ma))
                     
-        F, W, pop_mat, coal_times, X, sites, ts = self.simulator.simulate_fw(*params, method = self.method)
+        ret = self.simulator.simulate_fw(*params, method = self.method)
+        
+        if ret is not None:
+            F, W, pop_mat, coal_times, X, sites, ts = ret
+        else:
+            return ret
         
         W = np.array(W)
         
@@ -242,11 +253,17 @@ class MSPrimeFWLoader(object):
                 else:
                     params.append(log_scale ** np.random.uniform(mi, ma))
                     
-        F, W, pop_mat, coal_times, X, sites, ts = self.simulator.simulate_fw(*params, method = self.method)
+        ret = self.simulator.simulate_fw(*params, method = self.method)
+        if ret is not None:
+                    
+            F, W, pop_mat, coal_times, X, sites, ts = ret
+        else:
+            return ret
         
         W = np.array(W)
         F = np.array(F)
         F /= np.max(F)
+        
         
         ii = np.random.choice(range(F.shape[0]), n_per)
         F = F[ii]
@@ -254,6 +271,8 @@ class MSPrimeFWLoader(object):
         if pop_mat is not None:
             pop_mat = np.array(pop_mat)
             pop_mat = pop_mat[ii]
+        
+            print(pop_mat)
         
         W = np.log(W + 1e-12)
 
@@ -293,7 +312,7 @@ if __name__ == '__main__':
     from simulators import TwoPopMigrationSimulator
     
     sim = TwoPopMigrationSimulator(L = int(1e4))
-    loader = MSPrimeFWLoader('priors/migration.csv', sim)
+    loader = MSPrimeFWLoader('priors/migration.csv', sim, method = 'relate')
     
     X = loader.get_replicate_()
     plt.imshow(X[0].transpose(1, 2, 0))

@@ -27,11 +27,13 @@ class BaseSimulator(object):
     # r: recombination rate
     # whether or not diploid individuals are simulated (vs haploid)
     # the number of samples
-    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [40]):
+    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [40], N = 500):
         self.L = L
         self.mu = mu
         self.r = r
         self.diploid = diploid
+        
+        self.N = N
         
         self.n_samples = n_samples
         self.sample_size = sum(n_samples)
@@ -145,11 +147,11 @@ class BaseSimulator(object):
             ms_file = os.path.join(temp_dir.name, 'sim.vcf')
             
             f = open(os.path.join(temp_dir.name, 'sim.vcf'), 'w')
-            s.write_vcf(f)
+            s.write_vcf(f, allow_position_zero = True)
             f.close()
             
             tag = ms_file.split('/')[-1].split('.')[0]
-            cmd_ = self.rcmd.format('sim.haps', 'sim.sample', '../sim', odir)
+            cmd_ = self.rcmd.format('sim.haps', 'sim.sample', '../sim', odir) + ' >/dev/null 2>&1'
             os.system(cmd_)
             
             map_file = ms_file.replace('.vcf', '.map')
@@ -188,8 +190,16 @@ class BaseSimulator(object):
             
             os.system(cmd_)
             
-            anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-            Fs, Ws, snps, coal_times = read_anc(anc_file)
+            try:
+                if len(self.n_samples) == 1:
+                    _ = self.n_samples + [0]
+                else:
+                    _ = self.n_samples
+                
+                anc_file = os.path.join(odir, '{}.anc'.format(ofile))
+                Fs, Ws, snps, pop_vectors, coal_times = read_anc(anc_file, _)
+            except:
+                return None
             
             temp_dir.cleanup()
             
@@ -253,7 +263,7 @@ class PopSplitSimulator(BaseSimulator):
         return self.mutate_and_return_(ts)
     
 class TwoPopMigrationSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [65, 64]):
+    def __init__(self, L = int(1e6), mu = 1e-6, r = 1e-8, diploid = False, n_samples = [65, 64]):
         super().__init__(L, mu, r, diploid, n_samples)
         
     # constant size for two popuations and migration coefficient
