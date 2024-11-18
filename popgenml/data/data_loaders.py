@@ -271,9 +271,7 @@ class MSPrimeFWLoader(object):
         if pop_mat is not None:
             pop_mat = np.array(pop_mat)
             pop_mat = pop_mat[ii]
-        
-            print(pop_mat)
-        
+                
         W = np.log(W + 1e-12)
 
         if self.cdf is not None:
