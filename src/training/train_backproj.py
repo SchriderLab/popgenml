@@ -3,6 +3,9 @@ import os
 import argparse
 import logging
 
+import sys
+sys.path.append('popgenml/models')
+
 from torchvision_mod_layers import resnet34
 
 import argparse
