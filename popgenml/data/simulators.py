@@ -182,6 +182,9 @@ class BaseSimulator(object):
                 
             f.close()
             
+            if len(haps) == 0:
+                return None
+            
             ofile = haps[0].split('/')[-1].replace('.haps', '') + '_' + map_file.split('/')[-1].replace('.map', '').replace(tag, '').replace('.', '')
             if ofile[-1] == '_':
                 ofile = ofile[:-1]
