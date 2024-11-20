@@ -173,8 +173,11 @@ class MSPrimeFWLoader(object):
         maxs = []
         
         for ix in range(n_samples):
-            W = self.get_W_()
-            if W is not None:
+            W = None
+            while W is None:
+                W = self.get_W_()
+                if W is None:
+                    continue
                 W = np.array(W)
                 
                 W = np.log(W + 1e-12)
@@ -185,9 +188,11 @@ class MSPrimeFWLoader(object):
         h = np.zeros(len(bins) - 1)
         
         for ix in range(n_samples):
-            W = self.get_W_()
-            
-            if W is not None:
+            W = None
+            while W is None:
+                W = self.get_W_()
+                if W is None:
+                    continue
                 W = np.array(W)
                 
                 W = np.log(W + 1e-12)
