@@ -159,10 +159,10 @@ class MSPrimeFWLoader(object):
     def get_batch(self):
         X = []
         for k in range(self.batch_size // 2):
-            _ = self.get_replicate_()
-            if _ is not None:
-            
-                X.extend(self.get_replicate_())
+            _ = None
+            while _ is None:
+                _ = self.get_replicate_()
+            X.extend(_)
             
         return torch.FloatTensor(np.array(X))
     
