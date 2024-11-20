@@ -165,6 +165,7 @@ class BaseSimulator(object):
             ofile.write('{0} {1} {2}\n'.format(self.L, self.r * self.L, self.r * 10**8))
             ofile.close()
             
+            
             haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))
             samples = list(map(os.path.abspath, [u.replace('.haps', '.sample') for u in haps if os.path.exists(u.replace('.haps', '.sample'))]))
             
@@ -182,6 +183,8 @@ class BaseSimulator(object):
                 
             f.close()
             
+            if len(haps) == 0:
+                return None
             
             ofile = haps[0].split('/')[-1].replace('.haps', '') + '_' + map_file.split('/')[-1].replace('.map', '').replace(tag, '').replace('.', '')
             if ofile[-1] == '_':
