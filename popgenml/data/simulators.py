@@ -237,6 +237,30 @@ class BottleNeckSimulator(BaseSimulator):
         
         return self.mutate_and_return_(ts)
     
+class SimpleCoal(BaseSimulator):
+    def __init__(self, L = int(1e4), mu = 1e-6, r = 0., diploid = False, n_samples = [129]):
+        super().__init__(L, mu, r, diploid, n_samples)
+
+    # here we specify recombination rate in the simulation command
+    def simulate(self, N = 1000, r = 0.):
+        demography = msprime.Demography()
+        demography.add_population(name="A", initial_size=N)
+        
+        # simulate ancestry
+        ts = msprime.sim_ancestry(
+            #sample_size=2 * population_size,
+            samples = sum(self.n_samples),
+            sequence_length=self.L,
+            recombination_rate = r,
+            
+            #mutation_rate=mutation_rate,
+            demography=demography,
+            ploidy = 1,
+            #Ne=population_size
+        )
+        
+        return self.mutate_and_return_(ts)
+    
 class PopSplitSimulator(BaseSimulator):
     def __init__(self, L = int(1e8), mu = 5.7e-9, r = 3.386e-9, diploid = True, n_samples = [22, 18]):
         super().__init__(L, mu, r, diploid, n_samples)

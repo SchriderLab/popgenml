@@ -8,11 +8,160 @@ import glob
 from skbio.tree import TreeNode
 import copy
 
+from seriate import seriate
+from scipy.spatial.distance import pdist, cdist, squareform
+from scipy.optimize import linear_sum_assignment
+
 rscript_path = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 rcmd = 'cd {3} && ' + rscript_path + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
 
 relate_path = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
 relate_cmd = 'cd {6} && ' + relate_path + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
+
+def find_files(idir, exts = ('.msOut.gz')):
+    matches = []
+    
+    if not os.path.isdir(idir):
+        return matches
+        
+    for root, dirnames, filenames in os.walk(idir):
+        filenames = [ f for f in filenames if os.path.splitext(f)[1] in exts ]
+        for filename in filenames:
+            matches.append(os.path.join(root, filename))
+            
+    return matches
+
+def format_matrix(x, pos, y = None, pop_sizes = (20, 14), out_shape = (2, 32, 128), metric = 'cosine', mode = 'seriate_match'):
+    s0, s1 = pop_sizes
+    n_pops, n_ind, n_sites = out_shape
+            
+    pos = np.array(pos)
+    
+    if x.shape[0] != s0 + s1:
+        print('have x with incorrect shape!: {} vs expected {}'.format(x.shape[0], s0 + s1))
+        return None, None
+    
+    if mode == 'seriate_match':
+        x0 = x[:s0,:]
+        x1 = x[s0:s0 + s1,:]
+        
+        if y is not None:
+            y0 = y[:s0,:]
+            y1 = y[s0:s0 + s1,:]
+        
+        # upsample to the number of individuals
+        if s0 != n_ind:
+            ii = np.random.choice(range(s0), n_ind)
+            x0 = x0[ii,:]
+            
+            if y is not None:
+                y0 = y0[ii,:]
+
+        if s1 != n_ind:
+            ii = np.random.choice(range(s1), n_ind)
+            x1 = x1[ii,:]
+            
+            if y is not None:
+                y1 = y1[ii,:]
+ 
+        if x0.shape[1] > n_sites:
+            ii = np.random.choice(range(x0.shape[1] - n_sites))
+            
+            x0 = x0[:,ii:ii + n_sites]
+            x1 = x1[:,ii:ii + n_sites]
+            pos = pos[ii:ii + n_sites]
+            
+            if y is not None:
+                y0 = y0[:,ii:ii + n_sites]
+                y1 = y1[:,ii:ii + n_sites]
+        else:
+            to_pad = n_sites - x0.shape[1]
+        
+            if to_pad % 2 == 0:
+                x0 = np.pad(x0, ((0,0), (to_pad // 2, to_pad // 2)))
+                x1 = np.pad(x1, ((0,0), (to_pad // 2, to_pad // 2)))
+                
+                if y is not None:
+                    y0 = np.pad(y0, ((0,0), (to_pad // 2, to_pad // 2)))
+                    y1 = np.pad(y1, ((0,0), (to_pad // 2, to_pad // 2)))
+                
+                pos = np.pad(pos, (to_pad // 2, to_pad // 2))
+            else:
+                x0 = np.pad(x0, ((0,0), (to_pad // 2 + 1, to_pad // 2)))
+                x1 = np.pad(x1, ((0,0), (to_pad // 2 + 1, to_pad // 2)))
+                
+                if y is not None:
+                    y0 = np.pad(y0, ((0,0), (to_pad // 2 + 1, to_pad // 2)))
+                    y1 = np.pad(y1, ((0,0), (to_pad // 2 + 1, to_pad // 2)))
+                
+                pos = np.pad(pos, (to_pad // 2 + 1, to_pad // 2))
+    
+        # seriate population 1
+        D = squareform(pdist(x0, metric = metric))
+        D[np.isnan(D)] = 0.
+        
+        ii = seriate(D, timeout = 0.)
+        
+        x0 = x0[ii]
+        
+        if y is not None:
+            y0 = y0[ii]
+        
+        D = cdist(x0, x1, metric = metric)
+        D[np.isnan(D)] = 0.
+        
+        i, j = linear_sum_assignment(D)
+        
+        x1 = x1[j]
+        
+        if y is not None:
+            y1 = y1[j]
+        
+        x = np.concatenate([np.expand_dims(x0, 0), np.expand_dims(x1, 0)], 0)
+        if y is not None:
+            y = np.concatenate([np.expand_dims(y0, 0), np.expand_dims(y1, 0)], 0)
+        
+    elif mode == 'pad':
+        if x.shape[1] > n_sites:
+            ii = np.random.choice(range(x.shape[1] - n_sites))
+            
+            x = x[:,ii:ii + n_sites]
+            pos = pos[ii:ii + n_sites]
+        else:
+            to_pad = n_sites - x.shape[1]
+
+            if to_pad % 2 == 0:
+                x = np.pad(x, ((0,0), (to_pad // 2, to_pad // 2)))
+                pos = np.pad(pos, (to_pad // 2, to_pad // 2))
+            else:
+                x = np.pad(x, ((0,0), (to_pad // 2 + 1, to_pad // 2)))
+                pos = np.pad(pos, (to_pad // 2 + 1, to_pad // 2))
+    
+        
+    elif mode == 'seriate': # one population
+        if x.shape[1] > n_sites:
+            ii = np.random.choice(range(x.shape[1] - n_sites))
+            
+            x = x[:,ii:ii + n_sites]
+            pos = pos[ii:ii + n_sites]
+        else:
+            to_pad = n_sites - x.shape[1]
+
+            if to_pad % 2 == 0:
+                x = np.pad(x, ((0,0), (to_pad // 2, to_pad // 2)))
+                pos = np.pad(pos, (to_pad // 2, to_pad // 2))
+            else:
+                x = np.pad(x, ((0,0), (to_pad // 2 + 1, to_pad // 2)))
+                pos = np.pad(pos, (to_pad // 2 + 1, to_pad // 2))
+                
+        D = squareform(pdist(x, metric = metric))
+        D[np.isnan(D)] = 0.
+        
+        ii = seriate(D, timeout = 0.)
+        
+        x = x[ii,:]
+        
+    return x, pos, y
 
 def parse_line(line, s0, s1):
     nodes = []
@@ -214,6 +363,8 @@ def write_to_ms(ofile, X, sites, params):
         
     #ofile.write('\n')
     ofile.close()
+    
+
 
 # goes from *.msOut.gz to Relate (FW representation)
 def relate(ifile, n_samples, mu, r, N, L):
@@ -368,14 +519,9 @@ def load_data(msFile, ancFile = None, n = None, leave_out_last = False):
         ancFile = gzip.open(ancFile, 'r')
 
     ms_lines = [u.decode('utf-8') for u in msFile.readlines()]
+    ms_lines = [u for u in ms_lines if (not '#' in u)]
 
-    if leave_out_last:
-        ms_lines = ms_lines[:-1]
-
-    if ancFile is not None:
-        idx_list = [idx for idx, value in enumerate(ms_lines) if '//' in value] + [len(ms_lines)]
-    else:
-        idx_list = [idx for idx, value in enumerate(ms_lines) if '//' in value] + [len(ms_lines)]
+    idx_list = [idx for idx, value in enumerate(ms_lines) if ('//' in value)] + [len(ms_lines)]
         
             
     ms_chunks = [ms_lines[idx_list[k]:idx_list[k+1]] for k in range(len(idx_list) - 1)]
@@ -433,7 +579,7 @@ def load_data(msFile, ancFile = None, n = None, leave_out_last = False):
             
             del anc_lines[:len(pos)]
         else:
-            y = np.zeros(x.shape, dtype = np.uint8)
+            y = None
             
         if len(pos) == x.shape[1] - 1:
             pos = np.array(list(pos) + [1.])
