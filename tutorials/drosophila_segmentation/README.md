@@ -1,6 +1,6 @@
 # Training a UNet to infer introgression
 
-In this tutorial we'll replicate some results given in the paper [IntroUNET: Identifying introgressed alleles via semantic segmentation.] (https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1010657).  
+In this tutorial we'll replicate some results given in the paper [IntroUNET: Identifying introgressed alleles via semantic segmentation.] (https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1010657).  Make sure to have the pre-requisites installed per the README at the top of this repo.
 
 ## Simulating the data
 
@@ -21,4 +21,35 @@ And a script to generate the data at:
 src/simulations/simulate_msmodified.py
 ```
 
-This script is only meant for simulating this particular dataset.  It simulates 20 individuals in *D. *Simulans and 
+This script is only meant for simulating this particular dataset.  It simulates 20 individuals in _D. simulans_ and 14 individuals in _D. melanogaster_.  More information on the demographic model can be found in our manuscript.
+
+We can generate 100 replicates with introgression from population A (_D. simulans_) to population B (_D. melanogaster_) for each parameter set returned by DADI by running:
+
+```
+python3 src/simulations/simulate_msmodified.py --direction ab --odir data/dros_ab --n_jobs 1 --n_samples 100
+```
+
+If you have access to a SLURM cluster you can submit many many such jobs using:
+
+```
+python3 src/simulations/simulate_msmodified.py --direction ab --odir data/dros_ab --n_jobs 10 --n_samples 100 --slurm
+```
+
+This will submit 10 jobs to your cluster, each of which will simulate 100 replicates for each DADI parameter set.  The first local command took roughly 12 minutes on my computer and we get a directory structure like:
+
+```
+ls data/dros_ab/
+iter000000  iter000003  iter000006  iter000009  iter000012  iter000015  iter000018  iter000021  iter000024  iter000027  iter000030  iter000033  iter000036  iter000039  iter000042
+iter000001  iter000004  iter000007  iter000010  iter000013  iter000016  iter000019  iter000022  iter000025  iter000028  iter000031  iter000034  iter000037  iter000040
+iter000002  iter000005  iter000008  iter000011  iter000014  iter000017 ...
+```
+
+Within each are two files that contain the x and y variables respectively, ```ab.mig.msOut.gz``` and ```anc.out.gz```.  
+
+Next we will format the training data using multiple cores with MPI.  In this step each replicate is read and the chromosomes in pop A are sorted via seriation and then matched to an up-sampled set of chromosomes from pop B.
+
+
+
+
+
+
