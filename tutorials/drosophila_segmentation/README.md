@@ -35,7 +35,7 @@ If you have access to a SLURM cluster you can submit many many such jobs using:
 python3 src/simulations/simulate_msmodified.py --direction ab --odir data/dros_ab --n_jobs 10 --n_samples 100 --slurm
 ```
 
-This will submit 10 jobs to your cluster, each of which will simulate 100 replicates for each DADI parameter set.  The first local command took roughly 12 minutes on my computer and we get a directory structure like:
+This will submit 10 jobs to your cluster, each of which will simulate 100 replicates of 10kb for each DADI parameter set.  The first local command took roughly 12 minutes on my computer and we get a directory structure like:
 
 ```
 ls data/dros_ab/
