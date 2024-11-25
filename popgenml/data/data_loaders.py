@@ -244,7 +244,7 @@ class MSPrimeFWLoader(object):
         else:
             return W
     
-    def get_replicate_(self, n_per = 2):
+    def get_replicate_(self, n_per = 2, return_params = False):
         params = []
         
         for p in self.params.keys():
@@ -261,7 +261,7 @@ class MSPrimeFWLoader(object):
         ret = self.simulator.simulate_fw(*params, method = self.method)
         if ret is not None:
                     
-            F, W, pop_mat, coal_times, X, sites, ts = ret
+            F, W, pop_mat, coal_times, Xmat, sites, ts = ret
         else:
             return ret
         
@@ -269,13 +269,13 @@ class MSPrimeFWLoader(object):
         F = np.array(F)
         F /= np.max(F)
         
-        
-        ii = np.random.choice(range(F.shape[0]), n_per)
-        F = F[ii]
-        W = W[ii]
-        if pop_mat is not None:
-            pop_mat = np.array(pop_mat)
-            pop_mat = pop_mat[ii]
+        if n_per > 0:
+            ii = np.random.choice(range(F.shape[0]), n_per)
+            F = F[ii]
+            W = W[ii]
+            if pop_mat is not None:
+                pop_mat = np.array(pop_mat)
+                pop_mat = pop_mat[ii]
                 
         W = np.log(W + 1e-12)
 
@@ -308,8 +308,11 @@ class MSPrimeFWLoader(object):
             
         X = np.array(X)
         
-        return X
-        
+        if not return_params:
+            return X
+        else:
+            return X, Xmat, sites, params
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from simulators import TwoPopMigrationSimulator

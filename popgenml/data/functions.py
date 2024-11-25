@@ -8,12 +8,15 @@ import glob
 from skbio.tree import TreeNode
 import copy
 
+from io_ import write_to_ms, load_ms
+
 from seriate import seriate
 from scipy.spatial.distance import pdist, cdist, squareform
 from scipy.optimize import linear_sum_assignment
 
-rscript_path = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
-rcmd = 'cd {3} && ' + rscript_path + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
+rscript_path = 'Rscript {}'.format(os.path.abspath('src/data/ms2haps.R'))
+rcmd = 'cd {3} && ' + rscript_path + ' {0} {1} {2}'
+print(rcmd)
 
 relate_path = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
 relate_cmd = 'cd {6} && ' + relate_path + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
@@ -31,8 +34,41 @@ def find_files(idir, exts = ('.msOut.gz')):
             
     return matches
 
-def format_matrix(x, pos, y = None, pop_sizes = (20, 14), out_shape = (2, 32, 128), metric = 'cosine', mode = 'seriate_match'):
-    s0, s1 = pop_sizes
+def pad_sequences(sequences, max_length=None, padding_value=0):
+    """Pads sequences to the same length."""
+
+    if max_length is None:
+        max_length = max(len(seq) for seq in sequences)
+
+    padded_sequences = []
+    for seq in sequences:
+        padded_seq = np.pad(seq, ((0, max_length - len(seq)), (0, 0)), mode='constant', constant_values=padding_value)
+        padded_sequences.append(padded_seq)
+
+    return np.array(padded_sequences)
+
+"""
+x: (ind, sites) genotype matrix
+pos: (sites,) array of positions
+y: optional (same shape as x) for segmentation tasks
+pop_sizes: tuple (n0, n1) or (n, )
+out_shape: (n_pops, n_ind, n_sites) intended for the output.  If the genotype matrixs length > n_sites it is randomly cropped, 
+    if < it is zero padded to n_sites 
+metric: distance metric to use for sorting and/or matching
+    see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html#scipy.spatial.distance.pdist
+mode: [seriate_match (only for two populations, seriates the first population and matches it to chroms in the second),
+       seriate (order individuals via the seriation algorithm and the given distance metric, see https://github.com/src-d/seriate),
+       pad (pad the matrix on the site axis to the given size with no sorting. the number of individuals in outshape is ignored)]
+"""
+def format_matrix(x, pos, pop_sizes, y = None, 
+                  out_shape = (2, 32, 128), 
+                  metric = 'cosine', mode = 'seriate'):
+    if len(pop_sizes) == 1:
+        s0 = pop_sizes[0]
+        s1 = 0
+        
+    else: 
+        s0, s1 = pop_sizes
     n_pops, n_ind, n_sites = out_shape
             
     pos = np.array(pos)
@@ -162,6 +198,50 @@ def format_matrix(x, pos, y = None, pop_sizes = (20, 14), out_shape = (2, 32, 12
         x = x[ii,:]
         
     return x, pos, y
+
+def to_unique(X):
+    site_hist = dict()
+    
+    ix = 0
+    ii = dict()
+    
+    indices = []
+    for k in range(X.shape[1]):
+        x = X[:,k]
+        #h = hashFor(x)
+        h = ''.join(x.astype(str))
+        if h in site_hist.keys():
+            site_hist[h] += 1
+            
+        else:
+            site_hist[h] = 1
+            ii[h] = ix
+            
+            ix += 1
+            
+        indices.append(ii[h])
+        
+    site_hist = {v: k for k, v in site_hist.items()}
+    
+    ii = np.argsort(list(site_hist.keys()))[::-1]
+    indices = [indices[u] for u in indices]
+    
+    v = sorted(list(site_hist.keys()), reverse = True)
+    
+    _ = []
+    for v_ in v:
+        x = site_hist[v_]
+        x = np.array(list(map(float, [u for u in x])))
+        
+        _.append(x)
+    
+    x = np.array(_)
+    v = np.array(v, dtype = np.float32).reshape(-1, 1)
+    v /= np.sum(v)
+    
+    x = np.concatenate([x, v], -1)
+    
+    return x
 
 def parse_line(line, s0, s1):
     nodes = []
@@ -346,34 +426,11 @@ def read_anc(anc_file, pop_sizes = (40,0)):
     
     return Fs, Ws, snps, pop_vectors, np.array(coal_times)
 
-def write_to_ms(ofile, X, sites, params):
-    ofile = open(ofile, 'w')
-    
-    header = '// ' + ' '.join(['{0:04f}'.format(u) for u in params]) + '\n'
-    ofile.write(header)
-    
-    n_segsites = X.shape[1]
-    ofile.write('segsites: {}\n'.format(n_segsites))
-    pos_line = 'positions: ' + ' '.join(['{0:08f}'.format(u) for u in sites]) + '\n'
-    ofile.write(pos_line)
-    
-    for x in X:
-        line = ''.join(list(map(str, list(x)))) + '\n'
-        ofile.write(line)
-        
-    #ofile.write('\n')
-    ofile.close()
-    
+"""
 
+"""
+def relate(X, sites, n_samples, mu, r, N, L):
 
-# goes from *.msOut.gz to Relate (FW representation)
-def relate(ifile, n_samples, mu, r, N, L):
-    # assumes one simulation in the file
-    X, Y, pos, params = load_data(ifile)
-    
-    X = X[0]
-    sites = pos[0]
-    
     temp_dir = tempfile.TemporaryDirectory()
     
     odir = os.path.join(temp_dir.name, 'relate')
@@ -384,6 +441,7 @@ def relate(ifile, n_samples, mu, r, N, L):
     time.sleep(0.001)
     
     tag = ms_file.split('/')[-1].split('.')[0]
+    print(os.path.abspath(ms_file))
     cmd_ = rcmd.format(os.path.abspath(ms_file), tag, L, odir)
 
     os.system(cmd_)
@@ -420,11 +478,11 @@ def relate(ifile, n_samples, mu, r, N, L):
     os.system(cmd_)
     
     anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-    Fs, Ws, snps, coal_times = read_anc(anc_file)
+    Fs, Ws, snps, _, coal_times = read_anc(anc_file)
     
     temp_dir.cleanup()
 
-    return Fs, Ws, snps, np.array(sites), X
+    return Fs, Ws, snps, np.array(sites), coal_times
 
 def make_FW_rep(root, sample_sizes):
     if len(sample_sizes) > 1:
@@ -502,97 +560,5 @@ def make_FW_rep(root, sample_sizes):
     
     return F, W, pop_vector, s
 
-def split(word):
-    return [char for char in word]
 
-######
-# generic function for msmodified
-# ----------------
-# takes a gzipped ms file
-# returns a list of genotype matrices, introgressed allele matrices (if *.anc file is provided),
-# a list of position vectors, and a list of the parameters listed in the \\ line if any
-def load_data(msFile, ancFile = None, n = None, leave_out_last = False):
-    msFile = gzip.open(msFile, 'r')
 
-    # no migration case
-    if ancFile is not None:
-        ancFile = gzip.open(ancFile, 'r')
-
-    ms_lines = [u.decode('utf-8') for u in msFile.readlines()]
-    ms_lines = [u for u in ms_lines if (not '#' in u)]
-
-    idx_list = [idx for idx, value in enumerate(ms_lines) if ('//' in value)] + [len(ms_lines)]
-        
-            
-    ms_chunks = [ms_lines[idx_list[k]:idx_list[k+1]] for k in range(len(idx_list) - 1)]
-    ms_chunks[-1] += ['\n']
-
-    if ancFile is not None:
-        anc_lines = [u.decode('utf-8') for u in ancFile.readlines()]
-    else:
-        anc_lines = None
-        
-    X = []
-    Y = []
-    P = []
-    intros = []
-    params = []
-    
-    for chunk in ms_chunks:
-        line = chunk[0]
-        params_ = list(map(float, line.replace('\n', '').split('\t')[1:]))
-        
-        if len(params_) == 0:
-            params_ = list(map(float, line.replace('\n', '').split()[1:]))
-        
-    
-        if '*' in line:
-            intros.append(True)
-        else:
-            intros.append(False)
-        
-        pos = np.array([u for u in chunk[2].split(' ')[1:-1] if u != ''], dtype = np.float32)
-        _ = [list(map(int, split(u.replace('\n', '')))) for u in chunk[3:-1]]
-        _ = [u for u in _ if len(u) > 0]
-        
-        x = np.array(_, dtype = np.uint8)
-        
-        if x.shape[0] == 0:
-            X.append(None)
-            Y.append(None)
-            P.append(None)
-            params.append(None)
-            continue
-        
-        # destroy the perfect information regarding
-        # which allele is the ancestral one
-        for k in range(x.shape[1]):
-            if np.sum(x[:,k]) > x.shape[0] / 2.:
-                x[:,k] = 1 - x[:,k]
-            elif np.sum(x[:,k]) == x.shape[0] / 2.:
-                if np.random.choice([0, 1]) == 0:
-                    x[:,k] = 1 - x[:,k]
-        
-        if anc_lines is not None:
-            y = np.array([list(map(int, split(u.replace('\n', '')))) for u in anc_lines[:len(pos)]], dtype = np.uint8)
-            y = y.T
-            
-            del anc_lines[:len(pos)]
-        else:
-            y = None
-            
-        if len(pos) == x.shape[1] - 1:
-            pos = np.array(list(pos) + [1.])
-            
-        assert len(pos) == x.shape[1]
-        
-        if n is not None:
-            x = x[:n,:]
-            y = y[:n,:]
-            
-        X.append(x)
-        Y.append(y)
-        P.append(pos)
-        params.append(params_)
-        
-    return X, Y, P, params
