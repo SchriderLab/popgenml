@@ -17,54 +17,39 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.model(x.view(x.size(0), -1))
     
-class ResNet1d(nn.Module):
-    def __init__(self, in_dim):
+class RNNEstimator(nn.Module):
+    def __init__(self, in_dim, out_dim, hidden_size = 128, global_shape = 84, num_layers = 1, dropout = 0.0):
         super().__init__()
         
-        self.conv0 = nn.Sequential(nn.Conv1d(in_dim, in_dim, 1, stride = 1), nn.BatchNorm1d(in_dim))
+        self.in_norm = nn.LayerNorm(in_dim)
+        self.g_norm = nn.LayerNorm(global_shape)
         
-        self.layers = nn.ModuleList()
-        self.layers_ = nn.ModuleList()
-        channels = [in_dim, 64, 128, 256]
+        self.h_norm = nn.LayerNorm(hidden_size + global_shape)
         
-        for k in range(len(channels) - 1):
-            self.layers.append(nn.Sequential(nn.Conv1d(channels[k], channels[k], 3, padding = 1), nn.BatchNorm1d(channels[k])))
-            self.layers_.append(nn.Sequential(nn.Conv1d(channels[k], channels[k + 1], 3, padding = 1), nn.BatchNorm1d(channels[k + 1]), nn.ReLU()))
-
-    def forward(self, x):
-        x = self.conv0(x)
+        self.affine = nn.Linear(in_dim, in_dim)
         
-        for k in range(len(self.layers)):
-            x0 = self.layers[k](x)
-            x = self.layers_[k](x0 + x)
-            
-        return x
+        self.gru = nn.GRU(in_dim * 2, hidden_size, num_layers = num_layers, batch_first = True)
+        self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(in_dim, 3, dim_feedforward = hidden_size, batch_first = True, dropout = dropout), num_layers = 6)
         
-class TransformerConv(nn.Module):
-    def __init__(self, in_dim, out_dim = 3, hidden_size = 512, dropout = 0.):
-        super().__init__()
+        self.out = nn.Sequential(*[nn.Linear(hidden_size, hidden_size), nn.BatchNorm1d(hidden_size), nn.LeakyReLU(), 
+                                  nn.Linear(hidden_size, hidden_size), nn.BatchNorm1d(hidden_size), nn.LeakyReLU(),
+                                  nn.Linear(hidden_size, out_dim)])
+                
+        self.drop = nn.Dropout(0.5)
         
-        self.conv = ResNet1d(in_dim)
-        self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(256, 8, dim_feedforward = hidden_size, batch_first = True, dropout = dropout), num_layers = 3)
-        self.gru = nn.GRU(512, 512, batch_first = True)
-        
-        self.mlp = MLP(512, out_dim, 512)
-        
-    def forward(self, x):
-        x = self.conv(x).transpose(1, 2)
-        
+    def forward(self, x, drop = None):
         x0 = self.encoder(x)
-        x, h = self.gru(torch.cat([x, x0], -1))
+  
+        x = torch.cat([x, x0], -1)
+  
+        x, h = self.gru(x)
         h = h[0]
         
-        return self.mlp(h)
+        if drop:
+            h = drop(h)
+        
+        return self.out(h)
     
-if __name__ == '__main__':
-    import torch
-    
-    model = TransformerConv(61)
-    
-    x = torch.randn((8, 61, 128))
-    print(model(x).shape)    
+  
 
     
