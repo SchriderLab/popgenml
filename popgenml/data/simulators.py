@@ -2,7 +2,7 @@
 
 import msprime
 import numpy as np
-from functions import make_FW_rep, read_anc
+from functions import make_FW_rep, read_anc, read_slim
 from io import BytesIO, StringIO
 
 from skbio import read
@@ -17,16 +17,16 @@ import matplotlib.pyplot as plt
 import random
 import subprocess
 
+import matplotlib.pyplot as plt
+
 # to quiet down msprime
 logging.basicConfig(level = logging.ERROR)
 
 RELATE_PATH = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
 RSCRIPT_PATH = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 
+import sys
 
-        
-        
-        
 class BaseSimulator(object):
     # L is the size of the simulation in base pairs
     # specify mutation rate
@@ -218,28 +218,51 @@ class BaseSimulator(object):
             temp_dir.cleanup()
             
         return Fs, Ws, pop_vectors, coal_times, X, sites, s
-        
+    
 class SlimSimulator(object):
     """
     script (str): points to a slim script
-    args (list of str): argument names to be passed to the slim script
+    args (str): format string for slim command with args if needed
     """
-    def __init__(self, script, args):
+    def __init__(self, script, args = None, n_samples = 64, L = int(1e4)):
         self.script = script
         self.args = args
+        self.n_samples = n_samples
+        self.L = L
         
     def simulate(self, *args):
         args = args + (self.script,)
         
         seed = random.randint(0, 2**32-1)
-        slim_cmd = "SLiM/build/slim -seed {}".format(
-            )
+        slim_cmd = "include/SLiM/build/slim -seed {} -d physLen={} ".format(seed, self.L)
+
+        if self.args is not None:
+            slim_cmd += self.args.format(*args)
+            slim_cmd += " {}".format(self.script)    
+        else:
+            slim_cmd += "{}".format(self.script)
 
         procOut = subprocess.Popen(
             slim_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         output, err = procOut.communicate()
+                    
+        X, pos, y_ = read_slim(output, self.n_samples, self.L)
+        pos = np.array(pos)
+        X = np.array(X)
         
+        y = np.zeros(X.shape)
         
+        for ix, start_end in enumerate(y_):
+            if len(start_end) == 0:
+                continue
+            
+            for start,end in start_end:
+            
+                ii = np.where((pos >= start) & (pos <= end))[0]
+                
+                y[ix, ii] = 1.
+        
+        return X, pos, y
     
 class BottleNeckSimulator(BaseSimulator):
     def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [20]):

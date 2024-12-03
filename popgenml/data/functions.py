@@ -9,6 +9,7 @@ from skbio.tree import TreeNode
 import copy
 
 from io_ import write_to_ms, load_ms
+import sys
 
 from seriate import seriate
 from scipy.spatial.distance import pdist, cdist, squareform
@@ -197,6 +198,199 @@ def format_matrix(x, pos, pop_sizes, y = None,
         x = x[ii,:]
         
     return x, pos, y
+
+def parse_fixations(fixationLines):
+    fixations = []
+    mode = 0
+    for line in fixationLines:
+        if mode == 0:
+            if line.startswith("Mutations"):
+                mode = 1
+        elif mode == 1:
+            if line.startswith("Done with fixations"):
+                break
+            else:
+                tempId, permId, mutType, pos, selCoeff, domCoeff, originSubpop, originGen, fixationGen = line.strip().split()
+                fixations.append((mutType, int(pos)))
+    return fixations
+
+def process_slim_sample(sampleText, locs, genomes, sampleSize1):
+    mode = 0
+    idMapping, mutTypes, tempIdToPos = {}, {}, {}
+    introgressedAlleles = []
+    fixationLines = []
+    for line in sampleText:
+        # sys.stderr.write(line+"\n")
+        if mode == 0:
+            if line.startswith("Emitting fixations"):
+                mode = 1
+        elif mode == 1:
+            fixationLines.append(line.strip())
+            if line.startswith("Done with fixations"):
+                fixations = parse_fixations(fixationLines)
+                mode = 2
+        elif mode == 2:
+            if line.startswith("Mutations"):
+                mode = 3
+        elif mode == 3:
+            if line.startswith("Genomes"):
+                mode = 4
+            else:
+                tempId, permId, mutType, pos, selCoeff, domCoeff, originSubpop, originGen, numCopies = line.strip().split()
+                pos, originSubpop, originGen = int(pos), int(
+                    originSubpop.lstrip("p")), int(originGen)
+                if mutType == "m4":
+                    mutType = "m3"
+
+                if mutType == "m3":
+                    if not pos in locs:
+                        locs[pos] = {}
+                    locs[pos][permId] = 1
+                elif mutType in ["m1", "m2"]:
+                    tempIdToPos[tempId] = pos
+                else:
+                    print(tempId, permId, mutType, pos, selCoeff,
+                          domCoeff, originSubpop, originGen, numCopies)
+                    sys.exit(
+                        "Encountered mutation type other than m1, m2, or m3. ARRRRGGGGHHHHHHH!!!!!!\n")
+                idMapping[tempId] = permId
+                mutTypes[tempId] = mutType
+
+        elif mode == 4:
+            line = line.strip().split()
+            gId, auto = line[:2]
+            mutLs = line[2:]
+
+            introgressedAlleles.append([])
+            for tempId in mutLs:
+                if mutTypes[tempId] == "m1" and len(genomes) >= sampleSize1:
+                    introgressedAlleles[-1].append(tempIdToPos[tempId])
+                elif mutTypes[tempId] == "m2" and len(genomes) < sampleSize1:
+                    introgressedAlleles[-1].append(tempIdToPos[tempId])
+            for fixationType, fixationPos in fixations:
+                if fixationType == "m1" and len(genomes) >= sampleSize1:
+                    introgressedAlleles[-1].append(fixationPos)
+                elif fixationType == "m2" and len(genomes) < sampleSize1:
+                    introgressedAlleles[-1].append(fixationPos)
+
+            genomes.append(set([idMapping[x]
+                           for x in mutLs if mutTypes[x] == "m3"]))
+    return introgressedAlleles
+
+def getFreq(mutId, genomes):
+    mutCount = 0
+    for genome in genomes:
+        if mutId in genome:
+            mutCount += 1
+    return mutCount
+
+def processedIntrogressedAlleles(ls):
+    ls.sort()
+    if len(ls) == 0:
+        return []
+    else:
+        runs = []
+        runStart = ls[0]
+        for i in range(1, len(ls)):
+            if ls[i] > ls[i-1]+1:
+                runEnd = ls[i-1]
+                runs.append((runStart, runEnd))
+                runStart = ls[i]
+        runs.append((runStart, ls[-1]))
+    return runs
+
+def removeMonomorphic(allMuts, genomes):
+    newMuts = []
+    newLocI = 0
+    for locI, loc, contLoc, mutId in allMuts:
+        freq = getFreq(mutId, genomes)
+        if freq > 0 and freq < len(genomes):
+            newMuts.append((newLocI, loc, contLoc, mutId))
+            newLocI += 1
+    return newMuts
+
+def buildMutationPosMapping(mutLocs, physLen):
+    mutMapping = []
+    mutLocs.sort()
+    for i in range(len(mutLocs)):
+        pos, mutId = mutLocs[i]
+        mutMapping.append((i, pos, pos/physLen, mutId))
+    return mutMapping
+
+def buildPositionsList(muts, discrete=True):
+    positions = []
+    for locationIndex, locationDiscrete, locationContinuous, mutId in muts:
+        if discrete:
+            positions.append(locationDiscrete)
+        else:
+            positions.append(locationContinuous)
+    return positions
+
+def read_slim(output, sampleSize1, physLen, return_introgressed = True):
+    numSamples = 1
+    
+    totSampleCount = 0
+    for line in output.decode("utf-8").split("\n"):
+        if line.startswith("Sampling at generation"):
+            totSampleCount += 1
+    samplesToSkip = totSampleCount-numSamples
+    #sys.stderr.write("found {} samples and need to skip {}\n".format(totSampleCount, samplesToSkip))
+    
+    mode = 0
+    samplesSeen = 0
+    locs = {}
+    genomes = []
+    for line in output.decode("utf-8").split("\n"):
+        if mode == 0:
+            if line.startswith("migProb") or line.startswith("migTime"):
+                sys.stderr.write(line+"\n")
+            if line.startswith("splitTime"):
+                splitTime = int(line.strip().split("splitTime: ")[1])
+            if line.startswith("migTime"):
+                migTime = int(line.strip().split("migTime: ")[1])
+            if line.startswith("Sampling at generation"):
+                samplesSeen += 1
+                if samplesSeen >= samplesToSkip+1:
+                    sampleText = []
+                    mode = 1
+        elif mode == 1:
+            if line.startswith("Done emitting sample"):
+                mode = 0
+                if return_introgressed:
+                    introgressedAlleles = process_slim_sample(
+                        sampleText, locs, genomes, sampleSize1)
+                
+            else:
+                sampleText.append(line)
+        if "SEGREGATING" in line:
+            sys.stderr.write(line+"\n")
+            
+    newMutLocs = []
+    for mutPos in locs:
+        if len(locs[mutPos]) == 1:
+            mutId = list(locs[mutPos].keys())[0]
+            newMutLocs.append((mutPos, mutId))
+        else:
+
+            for mutId in locs[mutPos]:
+                newMutLocs.append((mutPos, mutId))
+
+    allMuts = buildMutationPosMapping(newMutLocs, physLen)
+    polyMuts = removeMonomorphic(allMuts, genomes)
+    positions = buildPositionsList(polyMuts)
+    haps = []
+    for i in range(len(genomes)):
+        haps.append([0]*len(polyMuts))
+
+    for i in range(len(genomes)):
+        for locI, loc, locCont, mutId in polyMuts:
+            if mutId in genomes[i]:
+                haps[i][locI] = 1
+
+    if return_introgressed:
+        return haps, positions, [processedIntrogressedAlleles(u) for u in introgressedAlleles]
+    else:
+        return haps, positions
 
 def to_unique(X):
     site_hist = dict()
