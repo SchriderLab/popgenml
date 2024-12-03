@@ -5,12 +5,18 @@ import numpy as np
 import argparse
 import logging
 
-from data_functions import writeTbsFile
 import copy
 import subprocess
 
-MSMOD_PATH = 'msdir/ms'
-MSMOD_PATH_r2 = 'msdir_rand2/ms'
+MSMOD_PATH = 'include/msmodified/ms'
+MSMOD_PATH_r2 = 'include/msdir/ms'
+
+# writes a space separated .tbs file (text)
+# which contains the demographic parameters for an ms two-population simulation
+def writeTbsFile(params, outFileName):
+    with open(outFileName, "w") as outFile:
+        for paramVec in params:
+            outFile.write(" ".join([str(x) for x in paramVec]) + "\n")
 
 # this function creates an array for writing to text that has the ms parameters
 # from a CSV file produced via bootstrapped DADI runs
@@ -54,7 +60,7 @@ def parse_args():
     parser.add_argument("--n_samples", default = "1000", help = "number of alignments to simulate per job")
     parser.add_argument("--n_jobs", default = "1", help = "number of jobs.  If your on a system without SLURM, then this should be left to 1 (default)")
     
-    parser.add_argument("--ifile", default = "params.txt", help = "CSV file of bootstrapped demographic estimates. only applicable for the drosophila case; --model dros")
+    parser.add_argument("--ifile", default = "params/dros.txt", help = "CSV file of bootstrapped demographic estimates. only applicable for the drosophila case; --model dros")
     
     parser.add_argument("--model", default = "dros", help = "model you'd like to simulate. current options our 'archie' and 'dros'")
     parser.add_argument("--direction", default = "ab", help = "directionality of migration. only applicable for the drosophila case; --model dros")
@@ -173,9 +179,8 @@ def main():
                     # example command:
                     # 34 1 -t 58.3288 -r 365.8836 10000 -T -L -I 2 20 14 -n 1 18.8855 -n 2 0.05542 -eg 0 1 6.5160 -eg 0 2 -7.5960 -ma x 0.0 0.0 x -ej 0.66698 2 1 -en 0.66698 1 1 -es 0.02080 2 0.343619 -ej 0.02080 3 1 -seeds 12674 8050 3617
                     
-                    # print the command, do the command, gzip the outputs
-                    cmd = "echo '{0}' && {0} && gzip {1}.mig.msOut".format(cmd, args.direction)
-                    print('simulating for parameters: {}'.format(P))
+                    # print the command, do the command, gzip the outputs, and cleanup
+                    cmd = "echo '{0}' && {0} && gzip {1}.mig.msOut && gzip out.anc && ".format(cmd, args.direction) + "find . -type f -not -name '*.gz' -not -name '*.tbs' -print0 | xargs -0 rm --"
                     sys.stdout.flush()
                     
                     if args.slurm:
@@ -185,8 +190,7 @@ def main():
                         print(cmd)
                         os.system(cmd)
                     else:
-                        print(cmd)
-                        
+                        print(cmd)                        
                         # New process, connected to the Python interpreter through pipes:
                         prog = subprocess.Popen(cmd, shell = True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         prog.communicate()

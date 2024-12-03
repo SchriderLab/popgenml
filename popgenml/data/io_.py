@@ -21,6 +21,7 @@ def write_to_ms(ofile, X, sites, params = None):
         line = ''.join(list(map(str, list(x)))) + '\n'
         ofile.write(line)
         
+    ofile.write('\n')
     ofile.close()
     
 def split(word):

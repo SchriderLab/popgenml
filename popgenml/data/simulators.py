@@ -14,9 +14,19 @@ import glob
 
 import logging
 import matplotlib.pyplot as plt
+import random
+import subprocess
+
 # to quiet down msprime
 logging.basicConfig(level = logging.ERROR)
 
+RELATE_PATH = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
+RSCRIPT_PATH = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
+
+
+        
+        
+        
 class BaseSimulator(object):
     # L is the size of the simulation in base pairs
     # specify mutation rate
@@ -209,6 +219,28 @@ class BaseSimulator(object):
             
         return Fs, Ws, pop_vectors, coal_times, X, sites, s
         
+class SlimSimulator(object):
+    """
+    script (str): points to a slim script
+    args (list of str): argument names to be passed to the slim script
+    """
+    def __init__(self, script, args):
+        self.script = script
+        self.args = args
+        
+    def simulate(self, *args):
+        args = args + (self.script,)
+        
+        seed = random.randint(0, 2**32-1)
+        slim_cmd = "SLiM/build/slim -seed {}".format(
+            )
+
+        procOut = subprocess.Popen(
+            slim_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output, err = procOut.communicate()
+        
+        
+    
 class BottleNeckSimulator(BaseSimulator):
     def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [20]):
         super().__init__(L, mu, r, diploid, n_samples)

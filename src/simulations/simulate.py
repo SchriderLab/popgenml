@@ -65,7 +65,10 @@ def to_count(x, t, n = 40):
     ret = np.mean(ret, 0)      
           
     return ret
-      
+    
+import copy
+import itertools
+from scipy.spatial.distance import pdist
 # use this format to tell the parsers
 # where to insert certain parts of the script
 # ${imports}
@@ -197,6 +200,8 @@ def main():
             m = 10 ** np.random.uniform(-5, -2)
             
             X, sites, ts = sim.simulate(Nanc, N_mainland, N_island, T_split, T_contact, m)
+            samples = list(range(sim.n_samples[0])) + list(range(sim.n_samples[0], sum(sim.n_samples)))
+            samples = list(itertools.combinations(samples, 2))
             
             times = ts.nodes_time
             times = np.array(times, dtype = np.float32)
@@ -206,6 +211,14 @@ def main():
             times = to_cdf(times, time_bins)
             
             x, indices = to_unique(X)
+            
+            
+            
+            print(X.shape, x.shape)
+            
+            plt.imshow(x[:,:-1])
+            plt.show()
+            
             
             np.savez_compressed(os.path.join(args.odir, '{0:04d}.npz'.format(ix)), x = x.astype(np.uint8), ii = indices.astype(np.uint16), y1 = times,
                                 y = np.array([Nanc, N_mainland, N_island, T_split, T_contact, m]))
