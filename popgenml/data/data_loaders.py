@@ -132,7 +132,9 @@ class MSPrimeFWLoader(object):
             max_min_scale = [tuple(map(float, u[1:])) for u in x]
         
             self.params = OrderedDict(zip(names, max_min_scale))
-                
+        elif prior is None:
+            self.params = OrderedDict()
+            
         self.method = method
         self.cdf = cdf
         self.n_per = n_per
@@ -158,7 +160,7 @@ class MSPrimeFWLoader(object):
         
     def get_batch(self):
         X = []
-        for k in range(self.batch_size // 2):
+        for k in range(self.batch_size):
             _ = None
             while _ is None:
                 _ = self.get_replicate_()
@@ -211,6 +213,7 @@ class MSPrimeFWLoader(object):
         y = beta.ppf(h, 5, 5)
         x = np.array(x)
         
+        print('done!...')
         _, ii = np.unique(y, return_index = True)
         
         self.cdf = interp1d(x[ii], y[ii])
@@ -228,8 +231,11 @@ class MSPrimeFWLoader(object):
                     params.append(np.random.uniform(mi, ma))
                 else:
                     params.append(log_scale ** np.random.uniform(mi, ma))
-                    
-        ret = self.simulator.simulate_fw(*params, method = self.method)
+        
+        if len(params) > 1:
+            ret = self.simulator.simulate_fw_single(*params)
+        else:
+            ret = self.simulator.simulate_fw_single(None)
         
         if ret is not None:
             F, W, pop_mat, coal_times, X, sites, ts = ret
@@ -238,13 +244,9 @@ class MSPrimeFWLoader(object):
         
         W = np.array(W)
         
-        if n_per > 0:
-            ii = np.random.choice(range(W.shape[0]), n_per)
-            return W[ii]
-        else:
-            return W
+        return W
     
-    def get_replicate_(self, n_per = 2, return_params = False):
+    def get_replicate_(self, return_params = False):
         params = []
         
         for p in self.params.keys():
@@ -258,7 +260,11 @@ class MSPrimeFWLoader(object):
                 else:
                     params.append(log_scale ** np.random.uniform(mi, ma))
                     
-        ret = self.simulator.simulate_fw(*params, method = self.method)
+        if len(params) > 1:
+            ret = self.simulator.simulate_fw_single(*params)
+        else:
+            ret = self.simulator.simulate_fw_single(None)
+            
         if ret is not None:
                     
             F, W, pop_mat, coal_times, Xmat, sites, ts = ret
@@ -269,42 +275,34 @@ class MSPrimeFWLoader(object):
         F = np.array(F)
         F /= np.max(F)
         
-        if n_per > 0:
-            ii = np.random.choice(range(F.shape[0]), n_per)
-            F = F[ii]
-            W = W[ii]
-            if pop_mat is not None:
-                pop_mat = np.array(pop_mat)
-                pop_mat = pop_mat[ii]
-                
         W = np.log(W + 1e-12)
 
         if self.cdf is not None:
             W = np.clip(W, self.cdf.x[0], self.cdf.x[-1])
             W = self.cdf(W)
-                
+                            
         i, j = np.triu_indices(self.f_size)
         i_, j_ = np.tril_indices(self.f_size)
         
         X = []
-        for ix in range(len(W)):
-            d = W[ix]
-            f = F[ix]
-            
-            im = np.zeros((self.size, self.size) + (3, ))
-            
-            if pop_mat is None:
-                im[j_, i_,0] = f
-                im[i_, j_, 0] = f
-                im[j_, i_, 1] = d                
-                im[j_, i_, 2] = d ** 0.5
-            else:                
-                im[j_,i_,0] = f
-                im[i_,j_,0] = f
-                im[j_, i_, 1] = d                
-                im[:, :, 2] = (self.p_im.im(pop_mat[ix]) * 1.5 + 100) / 255
-            
-            X.append(im.transpose(2, 0, 1))
+
+        d = W
+        f = F
+        
+        im = np.zeros((self.size, self.size) + (3, ))
+        
+        if pop_mat is None:
+            im[j_, i_,0] = f
+            im[i_, j_, 0] = f
+            im[j_, i_, 1] = d                
+            im[j_, i_, 2] = d ** 0.5
+        else:                
+            im[j_,i_,0] = f
+            im[i_,j_,0] = f
+            im[j_, i_, 1] = d                
+            im[:, :, 2] = (self.p_im.im(pop_mat) * 1.5 + 100) / 255
+        
+        X.append(im.transpose(2, 0, 1))
             
         X = np.array(X)
         

@@ -3,6 +3,24 @@
 import gzip
 import numpy as np
 
+def append_to_ms(ofile, X, sites, params = None):
+    if params:
+        header = '// ' + ' '.join(['{0:04f}'.format(u) for u in params]) + '\n'
+    else:
+        header = '//\n'
+        
+    ofile.write(header)
+    n_segsites = X.shape[1]
+    ofile.write('segsites: {}\n'.format(n_segsites))
+    pos_line = 'positions: ' + ' '.join(['{0:08f}'.format(u) for u in sites]) + '\n'
+    ofile.write(pos_line)
+    
+    for x in X:
+        line = ''.join(list(map(str, list(x)))) + '\n'
+        ofile.write(line)
+        
+    ofile.write('\n')
+
 def write_to_ms(ofile, X, sites, params = None):
     ofile = open(ofile, 'w')
     

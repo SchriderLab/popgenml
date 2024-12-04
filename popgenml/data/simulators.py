@@ -74,6 +74,57 @@ class BaseSimulator(object):
         
         return X, sites, mutated_ts
     
+    def simulate_fw_single(self, *args):
+        X, sites, s = self.simulate(*args)
+        
+        sample_sizes = self.n_samples
+        if self.diploid:
+            sample_sizes = [2 * u for u in sample_sizes]
+        
+        ii = np.random.choice(range(s.num_trees))
+        
+        tree = s.at(ii)
+        
+        f = StringIO(tree.as_newick())  
+        root = read(f, format="newick", into=TreeNode)
+        root.assign_ids()
+                
+        populations = [tree.population(u) for u in tree.postorder() if tree.is_leaf(u)]
+        
+        tips = [u for u in root.postorder() if u.is_tip()]
+        for ix, t_ in enumerate(tips):
+            t_.pop = populations[ix]
+            
+        children = root.children
+        t = max([tree.time(u) for u in tree.postorder()])
+        
+        root.age = t
+        
+        while len(children) > 0:
+            _ = []
+            for c in children:
+                
+                c.age = c.parent.age - c.length
+                if c.is_tip():
+                    c.age = 0.
+                else:
+                    c.pop = -1
+                    
+                _.extend(c.children)
+                
+            children = copy.copy(_)
+        
+        if len(self.n_samples) > 1:
+            pop_vector = np.array(populations)
+        else:
+            pop_vector = None
+        F, W, _, t_coal = make_FW_rep(root, sample_sizes)
+        i, j = np.tril_indices(F.shape[0])
+        F = F[i, j]
+        
+        return F, W, pop_vector, t_coal, X, sites, s
+       
+    
     # returns FW image(s)
     def simulate_fw(self, *args, method = 'true'):
         X, sites, s = self.simulate(*args)
@@ -264,6 +315,43 @@ class SlimSimulator(object):
         
         return X, pos, y
     
+    
+class StepStoneSimulator(BaseSimulator):
+    def __init__(self, L = int(1e4), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
+        super().__init__(L, mu, r, diploid, n_samples)
+        
+    # built in prior for this one
+    def simulate(self, Nt = None):
+        n_samples = self.sample_size
+        
+        demography = msprime.Demography()
+        if Nt is None:
+            k = np.random.choice(range(1, 9))
+            
+            T = [0] + sorted(list(10 ** np.random.uniform(2, 6, k - 1)))
+            N0 = 10 ** np.random.uniform(4, np.log10(1e6), k)
+            Nt = list(zip(N0, T))
+        
+        N0, _ = Nt[0]
+        demography.add_population(name="A", initial_size=N0)
+        
+        for N1, T in Nt[1:]:
+            demography.add_population_parameters_change(time=T, initial_size=N1)
+        
+        # simulate ancestry
+        ts = msprime.sim_ancestry(
+            #sample_size=2 * population_size,
+            samples = sum(self.n_samples),
+            sequence_length=self.L,
+            recombination_rate=self.r,
+            
+            #mutation_rate=mutation_rate,
+            demography=demography,
+            #Ne=population_size
+        )
+        
+        return self.mutate_and_return_(ts)
+    
 class BottleNeckSimulator(BaseSimulator):
     def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [20]):
         super().__init__(L, mu, r, diploid, n_samples)
@@ -430,3 +518,23 @@ class SecondaryContactSimulator(BaseSimulator):
         )
         
         return self.mutate_and_return_(ts)
+    
+
+    
+if __name__ == '__main__':
+    h = []
+    
+    sim = StepStoneSimulator(int(1e4), r = 1e-8)
+    
+    for k in range(512):
+        k = np.random.choice(range(1, 9))
+        
+        T = [0] + sorted(list(10 ** np.random.uniform(2, 6, k - 1)))
+        N0 = 10 ** np.random.uniform(4, 6, k)
+        Nt = list(zip(N0, T))
+        
+        print(Nt)
+        
+        _ = sim.simulate_fw_single(Nt)
+
+    

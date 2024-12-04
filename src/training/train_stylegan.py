@@ -8,16 +8,23 @@ import torch
 from torch import nn, autograd, optim
 from torch.nn import functional as F
 from torch.utils import data
-import torch.distributed as dist
-from torchvision import transforms, utils
-from tqdm import tqdm
+from torchvision import utils
+
 import sys
 # patch until package is finished
 sys.path.append('popgenml/data/')
 
 from simulators import TwoPopMigrationSimulator
-
 from data_loaders import MSPrimeFWLoader
+import importlib
+
+def class_for_name(module_name, class_name):
+    # load the module, will raise ImportError if module cannot be loaded
+    m = importlib.import_module(module_name)
+    # get the class, will raise AttributeError if class cannot be found
+    c = getattr(m, class_name)
+    return c
+
 
 try:
     import wandb
@@ -219,6 +226,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
     result['fake_score'] = []
     result['r1_loss'] = []
     
+    print('getting batch...')
     real_img = loader.get_batch()
     real_img = (real_img.to(device).to(torch.float32) * 2 - 1)
     real_img = real_img[:16].detach().cpu()
@@ -594,6 +602,7 @@ if __name__ == "__main__":
         default=8,
         help="dimensionality of the latent space",
     )
+    parser.add_argument("--sim", default = "StepStoneSimulator")
     
     parser.add_argument("--compare_every")
     parser.add_argument("--n_channels", default = "3")
@@ -607,7 +616,7 @@ if __name__ == "__main__":
     parser.add_argument("--f_size", default = "128")
     parser.add_argument("--c_dim", default = 2) # discriminator c_dim, initially unused in this script, for later
     
-    parser.add_argument("--prior", default = "priors/migration.csv")
+    parser.add_argument("--prior", default = "None")
     
     parser.add_argument("--im_depth", default = "8", help = "8 or 16 bit image")
     parser.add_argument("--method", default = "true")
@@ -690,8 +699,14 @@ if __name__ == "__main__":
         drop_last=True,
     )
     """
-    sim = TwoPopMigrationSimulator(L = int(1e4))
-    loader = MSPrimeFWLoader(args.prior, sim, batch_size = args.batch, method = args.method)
+    sim = class_for_name("simulators", args.sim)()
+    
+    if args.prior == "None":
+        prior = None
+    else:
+        prio = args.prior
+    
+    loader = MSPrimeFWLoader(prior, sim, batch_size = args.batch, method = args.method)
     pickle.dump({'cdf' : loader.cdf}, open(os.path.join(args.odir, 'cdf.pkl'), 'wb'))
     
     if get_rank() == 0 and wandb is not None and args.wandb:
