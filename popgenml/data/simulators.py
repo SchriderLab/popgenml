@@ -48,8 +48,8 @@ def chebyshev_history(min_size = 4, max_size = np.log10(2e6), max_K = 12, n_time
     
     y = p(x)
     
+    y -= np.mean(y)
     if np.var(y) != 0:
-        y -= np.mean(y)
         y /= (np.max(y) - np.min(y))
         
     ret = y * w + mean_log_size
