@@ -358,8 +358,10 @@ class StepStoneSimulator(BaseSimulator):
             t, N = chebyshev_history()
             
             N = 10 ** N
+            
             Nt = list(zip(N, t))
         
+        print(Nt)
         N0, _ = Nt[0]
         demography.add_population(name="A", initial_size=N0)
         
@@ -552,22 +554,10 @@ class SecondaryContactSimulator(BaseSimulator):
 if __name__ == '__main__':
     h = []
     
-    t, N = chebyshev_history()
-    
-    print(t, N)
-    sys.exit()
-    
     sim = StepStoneSimulator(int(1e4), r = 1e-8)
     
     for k in range(512):
-        k = np.random.choice(range(1, 9))
-        
-        T = [0] + sorted(list(10 ** np.random.uniform(2, 6, k - 1)))
-        N0 = 10 ** np.random.uniform(4, 6, k)
-        Nt = list(zip(N0, T))
-        
-        print(Nt)
-        
-        _ = sim.simulate_fw_single(Nt)
+        F, W, pop_vector, t_coal, X, sites, s = sim.simulate_fw_single()
+        print(s.max_time)
 
     
