@@ -47,9 +47,11 @@ def chebyshev_history(min_size = 4, max_size = np.log10(2e6), max_K = 12, n_time
     x = np.linspace(-1., 1., n_time_points)
     
     y = p(x)
-    y -= np.mean(y)
-    y /= (np.max(y) - np.min(y))
     
+    if np.var(y) != 0:
+        y -= np.mean(y)
+        y /= (np.max(y) - np.min(y))
+        
     ret = y * w + mean_log_size
     
     ii = [0] + list(np.sort(np.random.choice(range(1, len(ret)), np.random.choice(range(32)), replace = False)))
