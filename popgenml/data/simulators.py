@@ -27,6 +27,35 @@ RSCRIPT_PATH = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 
 import sys
 
+from numpy.polynomial.chebyshev import Chebyshev
+
+# min and max size in log10 scale
+def chebyshev_history(min_size = 4, max_size = np.log10(2e6), max_K = 12, n_time_points = 2048, max_time = 1e7):
+    mean_log_size = np.random.uniform(min_size, max_size)
+    max_w = np.min([np.abs(min_size - mean_log_size), np.abs(max_size - mean_log_size)])    
+
+    w = np.random.uniform(0., max_w)
+
+    #k = np.random.choice(range(0, max_K + 1))
+    #co = np.random.normal(0., 1., k)
+    co = np.random.normal(0., 1., max_K + 1)
+    co *= np.random.choice([0., 1.], max_K + 1)
+    
+    t = np.linspace(0., 1., n_time_points) * max_time
+    
+    p = Chebyshev(co)
+    x = np.linspace(-1., 1., n_time_points)
+    
+    y = p(x)
+    y -= np.mean(y)
+    y /= (np.max(y) - np.min(y))
+    
+    ret = y * w + mean_log_size
+    
+    ii = [0] + list(np.sort(np.random.choice(range(1, len(ret)), np.random.choice(range(32)), replace = False)))
+    
+    return t[ii], ret[ii]
+
 class BaseSimulator(object):
     # L is the size of the simulation in base pairs
     # specify mutation rate
@@ -326,11 +355,10 @@ class StepStoneSimulator(BaseSimulator):
         
         demography = msprime.Demography()
         if Nt is None:
-            k = np.random.choice(range(1, 9))
+            t, N = chebyshev_history()
             
-            T = [0] + sorted(list(10 ** np.random.uniform(2, 6, k - 1)))
-            N0 = 10 ** np.random.uniform(4, np.log10(1e6), k)
-            Nt = list(zip(N0, T))
+            N = 10 ** N
+            Nt = list(zip(N, t))
         
         N0, _ = Nt[0]
         demography.add_population(name="A", initial_size=N0)
@@ -523,6 +551,11 @@ class SecondaryContactSimulator(BaseSimulator):
     
 if __name__ == '__main__':
     h = []
+    
+    t, N = chebyshev_history()
+    
+    print(t, N)
+    sys.exit()
     
     sim = StepStoneSimulator(int(1e4), r = 1e-8)
     
