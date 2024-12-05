@@ -360,8 +360,7 @@ class StepStoneSimulator(BaseSimulator):
             N = 10 ** N
             
             Nt = list(zip(N, t))
-        
-        print(Nt)
+     
         N0, _ = Nt[0]
         demography.add_population(name="A", initial_size=N0)
         
