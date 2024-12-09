@@ -375,7 +375,7 @@ class StepStoneSimulator(BaseSimulator):
             samples = sum(self.n_samples),
             sequence_length=self.L,
             recombination_rate=self.r,
-            
+            ploidy = 1,
             #mutation_rate=mutation_rate,
             demography=demography,
             #Ne=population_size
