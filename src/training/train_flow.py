@@ -103,6 +103,8 @@ def main():
             while _ is None:
                 _ = loader.get_replicate_(True)
             w_, X_, _, _ = _
+            
+            print(X_.shape)
         
             X.append(X_.T)
             ims.append((w_ * 2 - 1)[0])
