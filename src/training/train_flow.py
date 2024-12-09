@@ -79,10 +79,10 @@ def main():
     if args.prior == "None":
         prior = None
     else:
-        prio = args.prior
+        prior = args.prior
     cdf = pickle.load(open(args.cdf , 'rb'))
     
-    loader = MSPrimeFWLoader(args.prior, sim, batch_size = 2, method = 'true', cdf = cdf['cdf'])
+    loader = MSPrimeFWLoader(prior, sim, batch_size = 2, method = 'true', cdf = cdf['cdf'])
     
     optimizer = torch.optim.Adam([{'params' : flow.parameters()}, {'params' : mat_embedding.parameters()}], lr = 1e-3)
     
