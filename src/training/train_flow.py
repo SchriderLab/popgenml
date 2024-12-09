@@ -99,9 +99,9 @@ def main():
         ims = []
 
         for ij in range(args.batch):
-            _ = loader.get_replicate_(1, True)
+            _ = loader.get_replicate_(True)
             while _ is None:
-                _ = loader.get_replicate_(1, True)
+                _ = loader.get_replicate_(True)
             w_, X_, _ = _
         
             X.append(X_.T)
