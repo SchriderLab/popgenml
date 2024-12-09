@@ -22,6 +22,7 @@ import pickle
 import numpy as np
 
 import matplotlib.pyplot as plt
+from train_stylegan import class_for_name
 # use this format to tell the parsers
 # where to insert certain parts of the script
 # ${imports}
@@ -39,6 +40,7 @@ def parse_args():
     parser.add_argument("--prior", default = "priors/migration.csv")
     parser.add_argument("--cdf", default = "ckpt/cdf.pkl")
     parser.add_argument("--weights", default = "backproj_i1/best.weights")
+    parser.add_argument("--sim", default = "StepStoneSimulator")
     
     parser.add_argument("--batch", default = 16, type = int)
     parser.add_argument("--n_steps", default = 10000, type = int)
@@ -72,7 +74,12 @@ def main():
     
     flow = zuko.flows.gaussianization.GF(args.latent, args.c_dim, transforms = 3, components = 8, hidden_features = (128, 128, 128), normalize = False).to(device)
     flow.train()
-    sim = TwoPopMigrationSimulator(L = int(1e4))
+    sim = class_for_name("simulators", args.sim)()
+    
+    if args.prior == "None":
+        prior = None
+    else:
+        prio = args.prior
     cdf = pickle.load(open(args.cdf , 'rb'))
     
     loader = MSPrimeFWLoader(args.prior, sim, batch_size = 2, method = 'true', cdf = cdf['cdf'])
