@@ -30,7 +30,7 @@ import sys
 from numpy.polynomial.chebyshev import Chebyshev
 
 # min and max size in log10 scale
-def chebyshev_history(min_size = 4, max_size = np.log10(2e6), max_K = 12, n_time_points = 2048, max_time = 1e7):
+def chebyshev_history(min_size = 5, max_size = np.log10(2e6), max_K = 12, n_time_points = 2048, max_time = 1e7):
     mean_log_size = np.random.uniform(min_size, max_size)
     max_w = np.min([np.abs(min_size - mean_log_size), np.abs(max_size - mean_log_size)])    
 
