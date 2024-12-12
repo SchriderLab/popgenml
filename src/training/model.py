@@ -9,7 +9,6 @@ from torch.nn import functional as F
 from torch.autograd import Function
 
 from op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d, conv2d_gradfix
-import nflows
 
 class PixelNorm(nn.Module):
     def __init__(self):
@@ -408,26 +407,6 @@ class StyleMapping(nn.Module):
     def forward(self, x):
         return self.style(x)
     
-class StyleFlowMapping(nn.Module):
-    def __init__(self, style_dim, blocks = 8):
-        super().__init__()
-        
-        transform = transforms.CompositeTransform([
-            transforms.MaskedAffineAutoregressiveTransform(features = style_dim, hidden_features = style_dim, num_blocks = blocks)])
-
-        base_distribution = distributions.StandardNormal(shape=[style_dim])
-        
-        # Combine into a flow.
-        flow = flows.Flow(transform=transform, distribution=base_distribution)
-        
-        self.style = flow
-        
-    def forward(self, z):
-        latent, logabsdet = self.style._transform(z)
-        
-        return latent
-
-from nflows import transforms, distributions, flows
 
 class Generator(nn.Module):
     def __init__(
@@ -448,25 +427,15 @@ class Generator(nn.Module):
         self.style_dim = style_dim
         self.use_flow = use_flow
 
-        if not use_flow:
-            layers = [PixelNorm()]
-            for i in range(n_mlp):
-                layers.append(
-                    EqualLinear(
-                        style_dim, style_dim, lr_mul=lr_mlp, activation="fused_lrelu"
-                    )
+        layers = [PixelNorm()]
+        for i in range(n_mlp):
+            layers.append(
+                EqualLinear(
+                    style_dim, style_dim, lr_mul=lr_mlp, activation="fused_lrelu"
                 )
-            self.style = nn.Sequential(*layers)
-        else:
-            transform = transforms.CompositeTransform([
-                transforms.MaskedAffineAutoregressiveTransform(features = style_dim, hidden_feature = style_dim, blocks = 8)])
-
-            base_distribution = distributions.StandardNormal(shape=[style_dim])
-            
-            # Combine into a flow.
-            flow = flows.Flow(transform=transform, distribution=base_distribution)
-            
-            self.style = flow
+            )
+        self.style = nn.Sequential(*layers)
+        
 
     
 

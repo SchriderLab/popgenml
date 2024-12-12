@@ -58,6 +58,43 @@ def chebyshev_history(min_size = 5, max_size = np.log10(2e6), max_K = 12, n_time
     
     return t[ii], ret[ii]
 
+class DiscoalSimulator(object):
+    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
+        self.L = L
+        self.mu = mu
+        self.r = r
+        self.diploid = diploid
+        self.n_samples = n_samples
+        
+    def simulate(self, Nt = None):
+        pop_size_str = ''
+        if Nt is None:
+            t, N = chebyshev_history()
+            
+            N = 10 ** N
+            
+            Nt = list(zip(N, t))
+            
+        N0 = Nt[0][0]
+        for (N, t) in Nt[1:]:
+            _ = ' -en {0} 0 {1}'.format(t / (4 * N0), N / N0)            
+            pop_size_str += _
+            
+        
+        N = Nt[0][0]
+        
+        s = 10 ** np.random.uniform(-4, -2)
+        a = 2 * N * s
+        
+        cmd = 'discoal {0} 1 200000 -t {1} -r {2} -T' + pop_size_str + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {}'.format(a, np.random.uniform(0.05, 0.95))
+        theta = 4 * N * self.mu * self.L
+        rho = 4 * N * self.r * self.L
+        
+        cmd_ = cmd.format(self.n_samples[0], theta, rho)
+        
+        print(cmd_)
+        
+
 class BaseSimulator(object):
     # L is the size of the simulation in base pairs
     # specify mutation rate
@@ -553,12 +590,16 @@ class SecondaryContactSimulator(BaseSimulator):
 
     
 if __name__ == '__main__':
+    sim = DiscoalSimulator()
+    sim.simulate()
+    
+    """
     h = []
     
     sim = StepStoneSimulator(int(1e4), r = 1e-8)
     
     for k in range(512):
         F, W, pop_vector, t_coal, X, sites, s = sim.simulate_fw_single()
-        print(s.max_time)
-
+        print(X.shape)
+    """
     

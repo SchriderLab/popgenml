@@ -90,9 +90,7 @@ def main():
     generator = H5UDataGenerator(h5py.File(args.ifile, 'r'), batch_size = int(config.get('training_params', 'batch_size')), 
                                  label_noise = float(config.get('training_params', 'label_noise')), label_smooth = config.getboolean('training_params', 'label_smooth'))
     val_keys = generator.val_keys
-    
-    print(set(val_keys).intersection(generator.keys))
-    
+        
     # save them for later
     pickle.dump(val_keys, open(os.path.join(args.odir, 'val_keys.pkl'), 'wb'))
     
