@@ -79,7 +79,7 @@ def main():
         prior = args.prior
     cdf = pickle.load(open(args.cdf , 'rb'))
     
-    loader = MSPrimeFWLoader(prior, sim, batch_size = 16, method = 'true', cdf = cdf['cdf'])
+    loader = MSPrimeFWLoader(prior, sim, batch_size = 16, method = 'true', cdf = None)
     
     print('getting batch...')
     real_img = loader.get_batch()

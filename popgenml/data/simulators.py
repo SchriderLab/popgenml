@@ -596,52 +596,11 @@ if __name__ == '__main__':
     
     sim = StepStoneSimulator(L = int(1e4), mu = 5.4e-9, r = 3.386e-9)
 
-    
-    
-    for k in range(32):
-        Fs, Ws, pop_vectors, coal_times, X, sites, ts = sim.simulate_fw()
-        print(X.shape)
-        
-        FW = [Fs[u] * Ws[u] for u in range(len(Fs))]
-        FW = np.array(FW)
-        
-        D = squareform(pdist(FW, metric = 'euclidean'))
-        
-        plt.imshow(D)
-        plt.colorbar()
-        plt.show()
-        
-        Fs, Ws, pop_vectors, coal_times, X, sites, ts = sim.simulate_fw()
+    Fs, Ws, pop_vectors, coal_times, X, sites, ts = sim.simulate_fw()
+    W = Ws[0]
 
-        ii = np.argmin(D.sum(1))        
-        Fmed = Fs[ii]
-        Wmed = Ws[ii]
-        
-        sys.exit()
-        
-        intervals = [(u.interval.left, u.interval.right) for u in ts.aslist()]
-        muts = [u.num_mutations for u in ts.aslist()]      
-        trees = ts.aslist()
-        
-        ii = [u for u in range(len(trees)) if trees[u].num_mutations != 0]
-        
-        Xs = []
-        
-        
-        for j in range(len(trees)):
-            start, end = (trees[j].interval.left, trees[j].interval.right)
-            start /= 1e4
-            end /= 1e4
-            
-            ii = np.where((sites >= start) & (sites < end))[0]
-            Xs.append((X[:,ii], j))
-            
-        print([u[0].shape[1] for u in Xs])
-        sys.exit()
-        
-        break_points = ts.breakpoints(as_array = True)
-        
-        print(len(break_points) / X.shape[1])
+    W = np.log(W + 1e-12)
+    print(np.percentile(W, 10), np.percentile(W, 25), np.percentile(W, 50), np.percentile(W, 75), np.percentile(W, 90))        
     
     
     """
