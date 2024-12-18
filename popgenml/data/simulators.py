@@ -596,11 +596,12 @@ if __name__ == '__main__':
     
     sim = StepStoneSimulator(L = int(1e4), mu = 5.4e-9, r = 3.386e-9)
 
-    Fs, Ws, pop_vectors, coal_times, X, sites, ts = sim.simulate_fw()
-    W = Ws[0]
-
-    W = np.log(W + 1e-12)
-    print(np.percentile(W, 10), np.percentile(W, 25), np.percentile(W, 50), np.percentile(W, 75), np.percentile(W, 90))        
+    for k in range(16):
+        Fs, Ws, pop_vectors, coal_times, X, sites, ts = sim.simulate_fw()
+        W = Ws[0]
+    
+        W = np.log(W + 1e-12)
+        print(np.percentile(W, 10), np.percentile(W, 25), np.percentile(W, 50), np.percentile(W, 75), np.percentile(W, 90))        
     
     
     """
