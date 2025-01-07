@@ -29,12 +29,20 @@ import sys
 
 from numpy.polynomial.chebyshev import Chebyshev
 
-# min and max size in log10 scale
-def chebyshev_history(min_size = 5, max_size = np.log10(2e6), max_K = 12, n_time_points = 2048, max_time = 1e7):
-    mean_log_size = np.random.uniform(min_size, max_size)
-    max_w = np.min([np.abs(min_size - mean_log_size), np.abs(max_size - mean_log_size)])    
+def plot_size_history(Nt):
+    N = [np.log(u[0]) for u in Nt]
+    t = [u[1] for u in Nt]
 
-    w = np.random.uniform(0., max_w)
+    for k in range(len(N) - 1):
+        plt.plot([t[k], t[k + 1]], [N[k], N[k]], c = 'k')
+        plt.plot([t[k + 1], t[k + 1]], [N[k], N[k + 1]], c = 'k')
+
+    
+# min and max size in log10 scale
+def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 2048, max_time = 1e7):
+    mean_log_size = np.random.uniform(min_size, max_size)
+
+    w = np.random.uniform(0., 1.) # up to a factor of 10 size change
 
     #k = np.random.choice(range(0, max_K + 1))
     #co = np.random.normal(0., 1., k)
@@ -54,7 +62,7 @@ def chebyshev_history(min_size = 5, max_size = np.log10(2e6), max_K = 12, n_time
         
     ret = y * w + mean_log_size
     
-    ii = [0] + list(np.sort(np.random.choice(range(1, len(ret)), np.random.choice(range(32)), replace = False)))
+    ii = [0] + list(np.sort(np.random.choice(range(1, len(ret)), np.random.choice(range(8)), replace = False)))
     
     return t[ii], ret[ii]
 
@@ -75,24 +83,30 @@ class DiscoalSimulator(object):
             
             Nt = list(zip(N, t))
             
+        print(Nt)
+            
         N0 = Nt[0][0]
         for (N, t) in Nt[1:]:
             _ = ' -en {0} 0 {1}'.format(t / (4 * N0), N / N0)            
             pop_size_str += _
             
-        
         N = Nt[0][0]
         
         s = 10 ** np.random.uniform(-4, -2)
         a = 2 * N * s
         
-        cmd = 'discoal {0} 1 20000 -t {1} -r {2} -T' + pop_size_str + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {}'.format(a, np.random.uniform(0.05, 0.95))
+        cmd = 'include/discoal/discoal {0} 1 20000 -t {1} -r {2}' + pop_size_str + '-ws 0 -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {}'.format(a, np.random.uniform(0.05, 0.95))
         theta = 4 * N * self.mu * self.L
         rho = 4 * N * self.r * self.L
         
         cmd_ = cmd.format(self.n_samples[0], theta, rho)
         
-        print(cmd_)
+        procOut = subprocess.Popen(
+            cmd_.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output, err = procOut.communicate()
+        
+        
+        
         
 class BaseSimulator(object):
     # L is the size of the simulation in base pairs
@@ -194,6 +208,7 @@ class BaseSimulator(object):
     
     # returns FW image(s)
     def simulate_fw(self, *args, method = 'true'):
+        print(args)
         X, sites, s = self.simulate(*args)
         
         sample_sizes = self.n_samples
@@ -592,6 +607,23 @@ class SecondaryContactSimulator(BaseSimulator):
 
     
 if __name__ == '__main__':
+    for k in range(4):
+        t, N = chebyshev_history()
+        
+        N = 10 ** N
+        
+        Nt = list(zip(N, t))
+        
+        plot_size_history(Nt)
+    
+    plt.show()
+    sys.exit()
+    
+    sim = DiscoalSimulator()
+    
+    sim.simulate()
+    sys.exit()
+    
     from scipy.spatial.distance import pdist, squareform
     
     sim = StepStoneSimulator(L = int(1e4), mu = 5.4e-9, r = 3.386e-9)
