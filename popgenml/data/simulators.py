@@ -125,14 +125,16 @@ def from_newick(
     return tables.tree_sequence()
 
 
-def plot_size_history(Nt):
+def plot_size_history(Nt, max_t = None, color = 'k'):
     N = [np.log10(u[0]) for u in Nt]
     t = [u[1] for u in Nt]
 
     for k in range(len(N) - 1):
-        plt.plot([t[k], t[k + 1]], [N[k], N[k]], c = 'k')
-        plt.plot([t[k + 1], t[k + 1]], [N[k], N[k + 1]], c = 'k')
+        plt.plot([t[k], t[k + 1]], [N[k], N[k]], c = color)
+        plt.plot([t[k + 1], t[k + 1]], [N[k], N[k + 1]], c = color)
 
+    if max_t:
+        plt.plot([t[-1], max_t], [N[-1], N[-1]], c = color)
     
 # min and max size in log10 scale
 def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 2048, max_time = 1e6):
@@ -162,6 +164,29 @@ def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 20
     
     return t[ii], ret[ii]
 
+def step_stone_history(min_size = 4, max_size = np.log10(1.5e5), max_breaks = 4):
+    n_breaks = np.random.choice(range(max_breaks + 1))
+    
+    initial_size = 10 ** np.random.uniform(min_size, max_size)
+    
+    # how should we choose the knots for the simulator?
+    # we'll say that breaks happen within 10 and 1000 generations and are uniform within that
+    N = [initial_size]
+    t = [0]
+    
+    Ns = list(10 ** np.random.uniform(min_size, max_size, n_breaks))
+    ts = sorted(list(np.random.uniform(100, 1000, n_breaks)))
+    
+    N = N + Ns
+    t = t + ts
+    
+    Nt = list(zip(N, t))
+    
+    return Nt
+        
+    
+    
+    
 class DiscoalSimulator(object):
     def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
         self.L = L
@@ -511,11 +536,7 @@ class StepStoneSimulator(BaseSimulator):
         
         demography = msprime.Demography()
         if Nt is None:
-            t, N = chebyshev_history()
-            
-            N = 10 ** N
-            
-            Nt = list(zip(N, t))
+            Nt = step_stone_history()
      
         N0, _ = Nt[0]
         demography.add_population(name="A", initial_size=N0)
@@ -538,7 +559,7 @@ class StepStoneSimulator(BaseSimulator):
         return self.mutate_and_return_(ts)
     
 class BottleNeckSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [20]):
+    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [129]):
         super().__init__(L, mu, r, diploid, n_samples)
         
     # population size up to T = N0
@@ -557,7 +578,7 @@ class BottleNeckSimulator(BaseSimulator):
             samples = sum(self.n_samples),
             sequence_length=self.L,
             recombination_rate=self.r,
-            
+            ploidy = 1,
             #mutation_rate=mutation_rate,
             demography=demography,
             #Ne=population_size
