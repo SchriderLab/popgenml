@@ -28,9 +28,105 @@ RSCRIPT_PATH = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 import sys
 
 from numpy.polynomial.chebyshev import Chebyshev
+import tskit
+import newick
+
+def from_newick(
+    string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None
+) -> tskit.TreeSequence:
+    """
+    Create a tree sequence representation of the specified newick string.
+
+    The tree sequence will contain a single tree, as specified by the newick. All
+    leaf nodes will be marked as samples (``tskit.NODE_IS_SAMPLE``). Newick names and
+    comments will be written to the node metadata. This can be accessed using e.g.
+    ``ts.node(0).metadata["name"]``.
+
+    :param string string: Newick string
+    :param float min_edge_length: Replace any edge length shorter than this value by this
+        value. Unlike newick, tskit doesn't support zero or negative edge lengths, so
+        setting this argument to a small value is necessary when importing trees with
+        zero or negative lengths.
+    :param float span: The span of the tree, and therefore the
+        :attr:`~TreeSequence.sequence_length` of the returned tree sequence.
+    :param str time_units: The value assigned to the :attr:`~TreeSequence.time_units`
+        property of the resulting tree sequence. Default: ``None`` resulting in the
+        time units taking the default of :attr:`tskit.TIME_UNITS_UNKNOWN`.
+    :param str node_name_key: The metadata key used for the node names. If ``None``
+        use the string ``"name"``, as in the example of accessing node metadata above.
+        Default ``None``.
+    :return: A tree sequence consisting of a single tree.
+    """
+    trees = newick.loads(string)
+    if len(trees) > 1:
+        raise ValueError("Only one tree can be imported from a newick string")
+    if len(trees) == 0:
+        raise ValueError("Newick string was empty")
+    tree = trees[0]
+    tables = tskit.TableCollection(span)
+    if time_units is not None:
+        tables.time_units = time_units
+    if node_name_key is None:
+        node_name_key = "name"
+    nodes = tables.nodes
+    nodes.metadata_schema = tskit.MetadataSchema(
+        {
+            "codec": "json",
+            "type": "object",
+            "properties": {
+                node_name_key: {
+                    "type": ["string"],
+                    "description": "Name from newick file",
+                },
+                "comment": {
+                    "type": ["string"],
+                    "description": "Comment from newick file",
+                },
+            },
+        }
+    )
+
+    id_map = {}
+
+    def get_or_add_node(newick_node, time):
+        if newick_node not in id_map:
+            flags = tskit.NODE_IS_SAMPLE if len(newick_node.descendants) == 0 else 0
+            metadata = {}
+            if newick_node.name:
+                metadata[node_name_key] = newick_node.name
+            if newick_node.comment:
+                metadata["comment"] = newick_node.comment
+            id_map[newick_node] = tables.nodes.add_row(
+                flags=flags, time=time, metadata=metadata
+            )
+        return id_map[newick_node]
+
+    root = next(tree.walk())
+    get_or_add_node(root, 0)
+    for newick_node in tree.walk():
+        node_id = id_map[newick_node]
+        for child in newick_node.descendants:
+            length = max(child.length, min_edge_length)
+            if length <= 0:
+                raise ValueError(
+                    "tskit tree sequences cannot contain edges with lengths"
+                    " <= 0. Set min_edge_length to force lengths to a"
+                    " minimum size"
+                )
+            child_node_id = get_or_add_node(child, nodes[node_id].time - length)
+            tables.edges.add_row(0, span, node_id, child_node_id)
+    # Rewrite node times to fit the tskit convention of zero at the youngest leaf
+    nodes = tables.nodes.copy()
+    youngest = min(tables.nodes.time)
+    tables.nodes.clear()
+    for node in nodes:
+        tables.nodes.append(node.replace(time=node.time - youngest + root.length))
+    tables.sort()
+    return tables.tree_sequence()
+
 
 def plot_size_history(Nt):
-    N = [np.log(u[0]) for u in Nt]
+    N = [np.log10(u[0]) for u in Nt]
     t = [u[1] for u in Nt]
 
     for k in range(len(N) - 1):
@@ -39,7 +135,7 @@ def plot_size_history(Nt):
 
     
 # min and max size in log10 scale
-def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 2048, max_time = 1e7):
+def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 2048, max_time = 1e6):
     mean_log_size = np.random.uniform(min_size, max_size)
 
     w = np.random.uniform(0., 1.) # up to a factor of 10 size change
@@ -49,7 +145,7 @@ def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 20
     co = np.random.normal(0., 1., max_K + 1)
     co *= np.random.choice([0., 1.], max_K + 1)
     
-    t = np.linspace(0., 1., n_time_points) * max_time
+    t = np.linspace(0., 1., n_time_points) * (10 ** mean_log_size) * 4
     
     p = Chebyshev(co)
     x = np.linspace(-1., 1., n_time_points)
@@ -82,9 +178,7 @@ class DiscoalSimulator(object):
             N = 10 ** N
             
             Nt = list(zip(N, t))
-            
-        print(Nt)
-            
+                        
         N0 = Nt[0][0]
         for (N, t) in Nt[1:]:
             _ = ' -en {0} 0 {1}'.format(t / (4 * N0), N / N0)            
@@ -95,7 +189,7 @@ class DiscoalSimulator(object):
         s = 10 ** np.random.uniform(-4, -2)
         a = 2 * N * s
         
-        cmd = 'include/discoal/discoal {0} 1 20000 -t {1} -r {2}' + pop_size_str + '-ws 0 -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {}'.format(a, np.random.uniform(0.05, 0.95))
+        cmd = 'include/discoal/discoal {0} 1 20000 -t {1} -r {2} -T' + pop_size_str + '-ws 0 -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {}'.format(a, np.random.uniform(0.05, 0.95))
         theta = 4 * N * self.mu * self.L
         rho = 4 * N * self.r * self.L
         
@@ -104,6 +198,12 @@ class DiscoalSimulator(object):
         procOut = subprocess.Popen(
             cmd_.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         output, err = procOut.communicate()
+        output = output.decode('utf-8')
+        
+        output = output.split('\n')
+        ns = [u for u in output if (('[' in u) and (']' in u))]
+        
+        trees = [from_newick(u) for u in ns]
         
         
         
@@ -607,15 +707,12 @@ class SecondaryContactSimulator(BaseSimulator):
 
     
 if __name__ == '__main__':
-    for k in range(4):
-        t, N = chebyshev_history()
-        
-        N = 10 ** N
-        
-        Nt = list(zip(N, t))
-        
-        plot_size_history(Nt)
+    t, N = chebyshev_history()
     
+    N = 10 ** N
+    
+    Nt = list(zip(N, t))
+    plot_size_history(Nt)
     plt.show()
     sys.exit()
     
