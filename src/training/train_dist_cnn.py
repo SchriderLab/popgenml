@@ -103,7 +103,7 @@ def main():
         print("Using " + str(device) + " as device")
         
         model = resnet34(in_channels = 3, num_classes = args.latent).to(device)
-        ckpt0 = torch.load(args.weights, map_location = device)
+        ckpt0 = torch.load(os.path.join(args.idir, 'best.weights'), map_location = device)
         model.load_state_dict(ckpt0)
         model.eval()
         
@@ -131,10 +131,10 @@ def main():
         prior = None
     else:
         prior = args.prior
-    cdf = pickle.load(open(args.cdf , 'rb'))
+    cdf = pickle.load(open(os.path.join(args.idir, 'cdf.pkl') , 'rb'))
     
     loader = MSPrimeFWLoader(prior, sim, batch_size = 2, method = 'true', cdf = cdf['cdf'])
-    fw_rep = FWRep(129, args.cdf)
+    fw_rep = FWRep(129, os.path.join(args.idir, 'cdf.pkl'))
     
     comm.Barrier()
     
