@@ -332,7 +332,7 @@ class BaseSimulator(object):
        
     
     # returns FW image(s)
-    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.05):
+    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.1):
         X, sites, s = self.simulate(*args)
         
         sample_sizes = self.n_samples
@@ -352,7 +352,7 @@ class BaseSimulator(object):
             # should be an iteration here but need to be careful in general due to RAM
             while ret:
                 if sample:
-                    if np.random.uniform() >= sample_prob:
+                    if np.random.uniform() > sample_prob:
                         ret = tree.next()
                         continue
             
