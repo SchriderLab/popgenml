@@ -198,6 +198,9 @@ class PriorSampler(object):
                     
         return params
 
+from scipy.spatial.distance import pdist, squareform
+import matplotlib.pyplot as plt
+
 class MSPrimeFWLoader(object):
     def __init__(self, prior, simulator, size = 128, batch_size = 32, method = 'true', cdf = None, n_per = 2):
         # prior is a dictionary specifying a uniform distribution over some or all parameters
@@ -325,19 +328,20 @@ class MSPrimeFWLoader(object):
         
         return W
     
-    def get_replicate_(self, return_params = False):
-        params = []
-        
-        for p in self.params.keys():
-            if type(self.params[p]) != tuple:
-                # assume float or integer
-                params.append(self.params[p])
-            else:
-                mi, ma, log_scale = self.params[p]
-                if log_scale == -1:
-                    params.append(np.random.uniform(mi, ma))
+    def get_replicate_(self, return_params = False, params = None):
+        if params is None:
+            params = []
+            
+            for p in self.params.keys():
+                if type(self.params[p]) != tuple:
+                    # assume float or integer
+                    params.append(self.params[p])
                 else:
-                    params.append(log_scale ** np.random.uniform(mi, ma))
+                    mi, ma, log_scale = self.params[p]
+                    if log_scale == -1:
+                        params.append(np.random.uniform(mi, ma))
+                    else:
+                        params.append(log_scale ** np.random.uniform(mi, ma))
                     
         if len(params) > 1:
             ret = self.simulator.simulate_fw_single(*params)
@@ -389,6 +393,53 @@ class MSPrimeFWLoader(object):
             return X
         else:
             return X, Xmat, sites, params
+        
+    def get_median_replicate(self):
+        F, W, pop_mat, coal_times, Xmat, sites, ts = self.simulator.simulate_fw(sample = True)
+        
+        F = np.array(F)
+        W = np.array(W)
+        
+        FW = [F[u] * W[u] for u in range(len(F))]
+        FW = np.array(FW)
+        
+        D = squareform(pdist(FW, metric = 'euclidean'))
+        
+        F /= np.max(F)
+        
+        W = np.log(W + 1e-12)
+        
+        if self.cdf is not None:
+            W = np.clip(W, self.cdf.x[0], self.cdf.x[-1])
+            W = self.cdf(W)
+        
+        i, j = np.triu_indices(self.f_size)
+        i_, j_ = np.tril_indices(self.f_size)
+        
+        ii = np.argmin(D.sum(1))
+        d = W[ii]
+        f = F[ii]
+        pop_mat = pop_mat[ii]
+        
+        im = np.zeros((self.size, self.size) + (3, ))
+        
+        if pop_mat is None:
+            im[j_, i_,0] = f
+            im[i_, j_, 0] = f
+            im[j_, i_, 1] = d                
+            im[j_, i_, 2] = d ** 0.5
+        else:                
+            im[j_,i_,0] = f
+            im[i_,j_,0] = f
+            im[j_, i_, 1] = d                
+            im[:, :, 2] = (self.p_im.im(pop_mat) * 1.5 + 100) / 255
+        
+        X = []
+        X.append(im.transpose(2, 0, 1))
+            
+        X = np.array(X)
+        
+        return Xmat, X
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt

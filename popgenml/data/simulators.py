@@ -332,8 +332,7 @@ class BaseSimulator(object):
        
     
     # returns FW image(s)
-    def simulate_fw(self, *args, method = 'true'):
-        print(args)
+    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.05):
         X, sites, s = self.simulate(*args)
         
         sample_sizes = self.n_samples
@@ -352,7 +351,10 @@ class BaseSimulator(object):
             ret = True
             # should be an iteration here but need to be careful in general due to RAM
             while ret:
-
+                if sample:
+                    if np.random.uniform() >= sample_prob:
+                        ret = tree.next()
+                        continue
             
                 f = StringIO(tree.as_newick())  
                 root = read(f, format="newick", into=TreeNode)
