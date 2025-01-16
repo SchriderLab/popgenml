@@ -38,13 +38,16 @@ from mpi4py import MPI
 
 def get_dist_matrix(x, metric = 'correlation'):
     _ = []
-    _.append(squareform(pdist(x, metric = 'correlation')))
-    _.append(squareform(pdist(x, metric = 'dice')))
-    _.append(squareform(pdist(x, metric = 'yule')))
+    D = squareform(pdist(x, metric = 'correlation'))
+    ii = seriate(D, timeout = 0.)
+    _.append(D[np.ix_(ii, ii)])
+    
+    _.append(squareform(pdist(x, metric = 'dice'))[np.ix_(ii, ii)])
+    _.append(squareform(pdist(x, metric = 'yule'))[np.ix_(ii, ii)])
     
     return np.array(_)
     
-    #ii = seriate(D, timeout = 0.)
+    #
     #return np.expand_dims(D[np.ix_(ii, ii)], 0)
 
 def parse_args():
