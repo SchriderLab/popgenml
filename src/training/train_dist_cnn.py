@@ -184,53 +184,53 @@ def main():
             print('step {}: have mean loss of {}...'.format(ix, np.mean(losses)))
             sys.stdout.flush()
             
-            if ix % 50 == 0:
+            if ix % 100 == 0:
                 if np.mean(losses) < min_loss:
                     print('saving weights...')
                     min_loss = np.mean(losses)
                     torch.save(dist_model.state_dict(), os.path.join(args.odir, 'best.weights'))
                 
-                fig, axes = plt.subplots(nrows = 4, sharex = True, figsize = (4, 12))
-                for k in range(4):
-                    Nt = step_stone_history()
-                    
-                    Xmat, pos, ts = sim.simulate(Nt)
-                    X = torch.FloatTensor(get_dist_matrix(Xmat)).unsqueeze(0).to(device)
-                    
-                    tree = ts.first()
-                    
-                    coal_times = []
-                    
-                    while True:
-                        times = [tree.time(u) for u in tree.nodes()]
-                        times = [u for u in times if u > 0]
-                        times = sorted(times)
-                        coal_times.append(times)
+                    fig, axes = plt.subplots(nrows = 4, sharex = True, figsize = (4, 12))
+                    for k in range(4):
+                        Nt = step_stone_history()
                         
-                        ret = tree.next()
+                        Xmat, pos, ts = sim.simulate(Nt)
+                        X = torch.FloatTensor(get_dist_matrix(Xmat)).unsqueeze(0).to(device)
                         
-                        if not ret:
-                            break
-                    
-                    coal_times = np.array(coal_times)
-                    
-                    dist_model.eval()
-                    
-                    with torch.no_grad():
-                        w_pred = dist_model(X)
-                    
-                        im = generator(w_pred, input_is_latent = True)
-            
-                    im = im.detach().cpu().numpy()
-                    coal_times_pred, ts_tree, F_pred, W = fw_rep.tree(im[0].transpose(1,2,0))
-            
-                    axes[k].plot(np.log(np.mean(coal_times, 0)), label = 'gt')
-                    axes[k].plot(np.log(coal_times_pred[::-1]), label = 'pred')
+                        tree = ts.first()
+                        
+                        coal_times = []
+                        
+                        while True:
+                            times = [tree.time(u) for u in tree.nodes()]
+                            times = [u for u in times if u > 0]
+                            times = sorted(times)
+                            coal_times.append(times)
+                            
+                            ret = tree.next()
+                            
+                            if not ret:
+                                break
+                        
+                        coal_times = np.array(coal_times)
+                        
+                        dist_model.eval()
+                        
+                        with torch.no_grad():
+                            w_pred = dist_model(X)
+                        
+                            im = generator(w_pred, input_is_latent = True)
                 
-                axes[0].legend()
+                        im = im.detach().cpu().numpy()
+                        coal_times_pred, ts_tree, F_pred, W = fw_rep.tree(im[0].transpose(1,2,0))
+                
+                        axes[k].plot(np.log(np.mean(coal_times, 0)), label = 'gt')
+                        axes[k].plot(np.log(coal_times_pred[::-1]), label = 'pred')
                     
-                plt.savefig(os.path.join(args.odir, 'best.png'), dpi = 100)
-                plt.close()
+                    axes[0].legend()
+                        
+                    plt.savefig(os.path.join(args.odir, 'best.png'), dpi = 100)
+                    plt.close()
         
     # ${code_blocks}
 
