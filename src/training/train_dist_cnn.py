@@ -65,6 +65,8 @@ def parse_args():
     parser.add_argument("--batch", default = 12, type = int)
     parser.add_argument("--n_steps", default = 10000, type = int)
     parser.add_argument("--odir", default = "None")
+    parser.add_argument("--L", default = "5e5")
+    
     parser.add_argument(
         "--channel_multiplier",
         type=int,
@@ -125,7 +127,7 @@ def main():
 
         min_loss = np.inf
   
-    sim = class_for_name("simulators", args.sim)(L = int(5e5))
+    sim = class_for_name("simulators", args.sim)(L = int(float(args.L)))
     
     if args.prior == "None":
         prior = None
