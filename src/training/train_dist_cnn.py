@@ -153,7 +153,7 @@ def main():
             ims = []
     
             for ij in range(todo):
-                w_, X_, _, _ = loader.get_replicate_(True)
+                X_, w_ = loader.get_median_replicate()
                 
                 X.append(get_dist_matrix(X_))
                 ims.append((w_ * 2 - 1)[0])
@@ -171,14 +171,15 @@ def main():
             dist_model.train()
             
             im = torch.FloatTensor(np.array(ims)).to(device)
-            with torch.no_grad():
-                w = model(im)
+            
                 
             X = torch.FloatTensor(np.array(X)).to(device)
             optimizer.zero_grad()
             
             w_pred = dist_model(X)
-            loss = criterion(w, w_pred)
+            im_pred = generator(w_pred, input_is_latent = True)
+            
+            loss = criterion(im, im_pred)
             loss.backward()
             
             losses.append(loss.item())
