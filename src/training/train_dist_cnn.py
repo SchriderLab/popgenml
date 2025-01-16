@@ -147,7 +147,7 @@ def main():
             X = []
             ims = []
     
-            for ij in range(args.batch):
+            for ij in range(todo):
                 w_, X_, _, _ = loader.get_replicate_(True)
                 
                 X.append(get_dist_matrix(X_))
