@@ -180,7 +180,7 @@ def main():
             im_pred = generator(w_pred, input_is_latent = True)
             
 
-            loss = criterion(im, im_pred)
+            loss = criterion(im[:,1:,:,:], im_pred[:,1:,:,:])
             loss.backward()
             
             losses.append(loss.item())
