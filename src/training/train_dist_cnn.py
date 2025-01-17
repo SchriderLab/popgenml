@@ -179,8 +179,7 @@ def main():
             w_pred = dist_model(X)
             im_pred = generator(w_pred, input_is_latent = True)
             
-
-            loss = criterion(im[:,1:,:,:], im_pred[:,1:,:,:])
+            loss = criterion(torch.triu(im[:,1,:,:]), torch.triu(im_pred[:,1,:,:])) + criterion(torch.triu(im[:,2,:,:]), torch.triu(im_pred[:,2,:,:]))
             loss.backward()
             
             losses.append(loss.item())
