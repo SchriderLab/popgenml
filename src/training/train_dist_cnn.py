@@ -246,9 +246,11 @@ def main():
                         Nt_est_ = est_N(np.expand_dims(coal_times_pred, 0))
                         print(Nt_est_)
                         
-                        plot_size_history(Nt_est_, axes[k], color = 'r')
-                        plot_size_history(Nt, axes[k])
-                        plot_size_history(Nt_est, axes[k], color = 'b')
+                        max_bin = max([u[1] for u in Nt_est] + [u[1] for u in Nt_est_])
+                        
+                        plot_size_history(Nt_est_, axes[k], max_t = max_bin, color = 'r')
+                        plot_size_history(Nt, axes[k], max_t = max_bin)
+                        plot_size_history(Nt_est, axes[k], max_t = max_bin, color = 'b')
                 
                         #axes[k].plot(np.log(np.mean(coal_times, 0)), label = 'gt')
                         #axes[k].plot(np.log(coal_times_pred[::-1]), label = 'pred')
