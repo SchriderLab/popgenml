@@ -205,7 +205,7 @@ def main():
                     min_loss = np.mean(losses)
                     torch.save(dist_model.state_dict(), os.path.join(args.odir, 'best.weights'))
                 
-                    fig, axes = plt.subplots(nrows = 4, sharex = True, figsize = (4, 12))
+                    fig, axes = plt.subplots(nrows = 4, figsize = (4, 12))
                     for k in range(4):
                         Nt = step_stone_history()
                         
