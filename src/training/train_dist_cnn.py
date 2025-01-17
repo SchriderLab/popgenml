@@ -120,8 +120,8 @@ def main():
         generator.load_state_dict(generator_weights["g_ema"])
         generator.eval()
     
-        dist_model = resnet34(in_channels = 3, num_classes = args.latent).to(device)
-        dist_model.load_state_dict(ckpt0)
+        dist_model = resnet34(in_channels = 1, num_classes = args.latent).to(device)
+        #dist_model.load_state_dict(ckpt0)
         
         losses = deque(maxlen = 100)
         criterion = torch.nn.MSELoss()
@@ -155,8 +155,12 @@ def main():
             for ij in range(todo):
                 X_, w_ = loader.get_median_replicate()
                 
-                X.append(get_dist_matrix(X_))
+                X_ = to_unique(X_)
+                
+                X.append(X_)
                 ims.append((w_ * 2 - 1)[0])
+                
+            
                 
             comm.send([X, ims], dest = 0)
         else:
@@ -168,6 +172,7 @@ def main():
                 X.extend(x)
                 ims.extend(y_)
                             
+            X = np.expand_dims(np.array(pad_sequences(X)), 1)    
             dist_model.train()
             
             im = torch.FloatTensor(np.array(ims)).to(device)
@@ -199,7 +204,7 @@ def main():
                         Nt = step_stone_history()
                         
                         Xmat, pos, ts = sim.simulate(Nt)
-                        X = torch.FloatTensor(get_dist_matrix(Xmat)).unsqueeze(0).to(device)
+                        X = torch.FloatTensor(to_unique(Xmat)).unsqueeze(0).unsqueeze(1).to(device)
                         
                         tree = ts.first()
                         
