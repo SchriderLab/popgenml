@@ -332,7 +332,7 @@ class BaseSimulator(object):
        
     
     # returns FW image(s)
-    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.05):
+    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.01):
         X, sites, s = self.simulate(*args)
         
         sample_sizes = self.n_samples
