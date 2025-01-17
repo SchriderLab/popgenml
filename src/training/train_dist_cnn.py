@@ -13,7 +13,7 @@ sys.path.append('popgenml/models')
 from torchvision_mod_layers import resnet34
 
 from layers import RNNEstimator
-from simulators import TwoPopMigrationSimulator, chebyshev_history, plot_size_history, step_stone_history
+from simulators import TwoPopMigrationSimulator, chebyshev_history, step_stone_history
 
 from data_loaders import MSPrimeFWLoader
 from functions import to_unique, pad_sequences
@@ -25,7 +25,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from train_stylegan import class_for_name
 from swagan_gray import Generator, Discriminator
-
+from eval_flow_popsize import est_N
 
 from scipy.spatial.distance import pdist, squareform
 from seriate import seriate
@@ -97,6 +97,17 @@ def parse_args():
     # ${odir_del_block}
 
     return args
+
+def plot_size_history(Nt, ax, max_t = None, color = 'k'):
+    N = [np.log10(u[0]) for u in Nt]
+    t = [u[1] for u in Nt]
+
+    for k in range(len(N) - 1):
+        ax.plot([t[k], t[k + 1]], [N[k], N[k]], c = color)
+        ax.plot([t[k + 1], t[k + 1]], [N[k], N[k + 1]], c = color)
+
+    if max_t:
+        ax.plot([t[-1], max_t], [N[-1], N[-1]], c = color)
 
 def main():
     args = parse_args()
@@ -218,6 +229,9 @@ def main():
                         
                         coal_times = np.array(coal_times)
                         
+                        Nt_est = est_N(coal_times)
+                        
+                        
                         dist_model.eval()
                         
                         with torch.no_grad():
@@ -227,11 +241,19 @@ def main():
                 
                         im = im.detach().cpu().numpy()
                         coal_times_pred, ts_tree, F_pred, W = fw_rep.tree(im[0].transpose(1,2,0))
+                        coal_times_pred = coal_times_pred[::-1]
                 
-                        axes[k].plot(np.log(np.mean(coal_times, 0)), label = 'gt')
-                        axes[k].plot(np.log(coal_times_pred[::-1]), label = 'pred')
+                        Nt_est_ = est_N(np.expand_dims(coal_times_pred, 0))
+                        print(Nt_est_)
+                        
+                        plot_size_history(Nt_est_, axes[k], color = 'r')
+                        plot_size_history(Nt, axes[k])
+                        plot_size_history(Nt_est, axes[k], color = 'b')
+                
+                        #axes[k].plot(np.log(np.mean(coal_times, 0)), label = 'gt')
+                        #axes[k].plot(np.log(coal_times_pred[::-1]), label = 'pred')
                     
-                    axes[0].legend()
+                    #axes[0].legend()
                         
                     plt.savefig(os.path.join(args.odir, 'best.png'), dpi = 100)
                     plt.close()
