@@ -529,7 +529,7 @@ class SlimSimulator(object):
     
     
 class StepStoneSimulator(BaseSimulator):
-    def __init__(self, L = int(1e4), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
+    def __init__(self, L = int(1e4), mu = 1.7e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
         super().__init__(L, mu, r, diploid, n_samples)
         
     # built in prior for this one
