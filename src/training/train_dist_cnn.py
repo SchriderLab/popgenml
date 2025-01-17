@@ -39,11 +39,11 @@ from mpi4py import MPI
 def get_dist_matrix(x, metric = 'correlation'):
     _ = []
     D = squareform(pdist(x, metric = 'correlation'))
-    ii = seriate(D, timeout = 0.)
-    _.append(D[np.ix_(ii, ii)])
+    #ii = seriate(D, timeout = 0.)
+    _.append(D)
     
-    _.append(squareform(pdist(x, metric = 'dice'))[np.ix_(ii, ii)])
-    _.append(squareform(pdist(x, metric = 'yule'))[np.ix_(ii, ii)])
+    _.append(squareform(pdist(x, metric = 'dice')))
+    _.append(squareform(pdist(x, metric = 'yule')))
     
     return np.array(_)
     
