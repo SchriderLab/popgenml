@@ -30,6 +30,8 @@ import sys
 from numpy.polynomial.chebyshev import Chebyshev
 import tskit
 import newick
+import scipy
+from scipy.stats import poisson, geom
 
 def from_newick(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None
@@ -126,8 +128,11 @@ def from_newick(
 
 
 def plot_size_history(Nt, max_t = None, color = 'k'):
-    N = [np.log10(u[0]) for u in Nt]
+    N = [u[0] for u in Nt]
     t = [u[1] for u in Nt]
+
+    N = N[1:]
+    t = np.log10(t[1:])
 
     for k in range(len(N) - 1):
         plt.plot([t[k], t[k + 1]], [N[k], N[k]], c = color)
@@ -135,6 +140,36 @@ def plot_size_history(Nt, max_t = None, color = 'k'):
 
     if max_t:
         plt.plot([t[-1], max_t], [N[-1], N[-1]], c = color)
+        
+def cheb_history(K = 32, n_time_points = 128, min_frac = 0.1, max_frac = 2, mu = 0.05):
+    mean_size = 75000
+
+    rv = geom(mu)
+    pmf = rv.pmf(range(1, K))
+    
+    pmf /= np.sum(pmf)
+    
+    K = np.random.choice(range(1, K), p = pmf)
+
+    co = np.random.normal(0., 1., K + 1)
+    p = Chebyshev(co)
+    
+    x = np.linspace(-1., 1., n_time_points)
+    
+    y = p(x)
+    
+    max_p = np.max(y)
+    min_p = np.min(y)
+    
+    y = (y - min_p) / (max_p - min_p)
+    y *= np.random.uniform(min_frac, max_frac)
+    y += min_frac
+
+    t = [0] + list(np.exp(np.linspace(0, 11, n_time_points - 1)))
+
+    return t, y
+    
+
     
 # min and max size in log10 scale
 def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 2048, max_time = 1e6):
@@ -262,7 +297,7 @@ class BaseSimulator(object):
         
         return
     
-    # should return X, sites
+    # should return X, sites, tree sequence
     # where X is a binary matrix and sites is an array with positions corresponding to the second axis
     def simulate(self, *args):
         return
@@ -527,9 +562,8 @@ class SlimSimulator(object):
         
         return X, pos, y
     
-    
 class StepStoneSimulator(BaseSimulator):
-    def __init__(self, L = int(1e4), mu = 1.7e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
+    def __init__(self, L = int(1e4), mu = 1.25e-8, r = 1.0e-8, diploid = False, n_samples = [129]):
         super().__init__(L, mu, r, diploid, n_samples)
         
     # built in prior for this one
@@ -538,7 +572,9 @@ class StepStoneSimulator(BaseSimulator):
         
         demography = msprime.Demography()
         if Nt is None:
-            Nt = step_stone_history()
+            t, N = cheb_history()
+            
+            Nt = list(zip(N, t))
      
         N0, _ = Nt[0]
         demography.add_population(name="A", initial_size=N0)
@@ -546,6 +582,64 @@ class StepStoneSimulator(BaseSimulator):
         for N1, T in Nt[1:]:
             demography.add_population_parameters_change(time=T, initial_size=N1)
         
+        # simulate ancestry
+        ts = msprime.sim_ancestry(
+            #sample_size=2 * population_size,
+            samples = sum(self.n_samples),
+            sequence_length=self.L,
+            recombination_rate=self.r,
+            ploidy = 1,
+            #mutation_rate=mutation_rate,
+            demography=demography,
+            #Ne=population_size
+        )
+        
+        return self.mutate_and_return_(ts)
+    
+import demesdraw
+    
+class ZigZagSimulator(BaseSimulator):
+    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
+        super().__init__(L, mu, r, diploid, n_samples)
+        
+    def generate_params(self, Neps = 0.1, Nanc = (0.05, 1.25), ):
+        N0 = 70000 * np.random.uniform(1 - Neps, 1 + Neps)
+        
+        Nanc = N0 * np.random.uniform(Nanc[0], Nanc[1])
+        
+        k = np.random.choice(range(1, 12))
+        
+        T = np.exp(sorted(np.linspace(np.random.uniform(4, 5), np.random.uniform(9.5, 10.5), k)))
+        alphas = np.exp(np.random.normal() + -7) * np.random.choice([-1, 1.], k - 1)
+        
+        return N0, Nanc, T, alphas
+        
+    def simulate(self, params = None):
+        if params is None:
+            N0, Nanc, T, alphas = self.generate_params()
+        
+        #print(N0, Nanc, T, alphas)
+        
+        demography = msprime.Demography()
+        demography.add_population(name="A", initial_size=N0)
+        
+        for t, a in zip(T[:-1], alphas):
+            demography.add_population_parameters_change(time = t, growth_rate = a)
+            
+        demography.add_population_parameters_change(time = T[-1], growth_rate = 0., initial_size = Nanc)
+        debug = demography.debug()
+        
+        sizes = debug.population_size_trajectory(np.linspace(0., np.max(T) * 4, 1000)).flatten()
+        
+        if np.any(sizes > 1e6) or np.any(sizes < 10):
+            return self.simulate(params)
+        
+        """
+        graph = demography.to_demes()
+        ax = demesdraw.tubes(graph, log_time = True)
+        plt.show()
+        plt.close()
+        """
         # simulate ancestry
         ts = msprime.sim_ancestry(
             #sample_size=2 * population_size,
@@ -730,6 +824,18 @@ class SecondaryContactSimulator(BaseSimulator):
 
     
 if __name__ == '__main__':
+    for k in range(12):
+        t, y = cheb_history()
+        Nt = list(zip(y, t))
+        
+        
+        
+        plot_size_history(Nt)
+        
+    plt.show()
+    
+    sys.exit()
+    
     t, N = chebyshev_history()
     
     N = 10 ** N
