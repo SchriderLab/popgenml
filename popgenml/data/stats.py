@@ -4,51 +4,6 @@ import allel
 import numpy as np
 # functions to take in (n, sites) binary haplotype array and positional array (sites,) and output a statistic
 
-def to_unique(X):
-    site_hist = dict()
-    
-    ix = 0
-    ii = dict()
-    
-    indices = []
-    for k in range(X.shape[1]):
-        x = X[:,k]
-        h = ''.join(x.astype(str))
-        if h in site_hist.keys():
-            site_hist[h] += 1
-            
-        else:
-            site_hist[h] = 1
-            ii[h] = ix
-            
-            ix += 1
-        
-        # this site is the ith unique one found
-        indices.append(ii[h])
-        
-    site_hist = {v: k for k, v in site_hist.items()}
-    
-    ii = np.argsort(list(site_hist.keys()))[::-1]
-    # resort the indices as well
-    indices = [indices[u] for u in indices]
-    
-    v = sorted(list(site_hist.keys()), reverse = True)
-    
-    _ = []
-    for v_ in v:
-        x = site_hist[v_]
-        x = np.array(list(map(float, [u for u in x])))
-        
-        _.append(x)
-    
-    x = np.array(_)
-    v = np.array(v, dtype = np.float32).reshape(-1, 1)
-    v /= np.sum(v)
-    
-    x = np.concatenate([x, v], -1)
-    
-    return x, np.array(indices, dtype = np.int32)
-
 # pos here are integers
 def theta_pi(x, pos):
     h = allel.HaplotypeArray(x.astype(np.uint8))
@@ -86,6 +41,7 @@ def het_diversity(x, ploidy = 2):
     
     return np.array([r.mean(), r.std()])
 
+# x: (ind, sites)
 def sfs(x):
     sfs, _ = np.histogram(x.sum(0), bins = list(range(1, x.shape[0])))
     sfs = sfs.astype(np.float32)
