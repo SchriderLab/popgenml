@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
+from relate import read_anc, RELATE_PATH, relate
+from viz import plot_demography
+
 import msprime
 import numpy as np
-from functions import make_FW_rep, read_anc, read_slim
 from io import BytesIO, StringIO
 
 from skbio import read
@@ -19,10 +21,6 @@ import subprocess
 
 import matplotlib.pyplot as plt
 
-# to quiet down msprime
-logging.basicConfig(level = logging.ERROR)
-
-RELATE_PATH = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
 RSCRIPT_PATH = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 
 import sys
@@ -32,6 +30,7 @@ import tskit
 import newick
 import scipy
 from scipy.stats import poisson, geom
+from fw import tree_to_fw
 
 def from_newick(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None
@@ -125,398 +124,103 @@ def from_newick(
         tables.nodes.append(node.replace(time=node.time - youngest + root.length))
     tables.sort()
     return tables.tree_sequence()
+        
+"""
+Base class to define the functionality for different pop size history priors.  These are used to sample population size trajectoies that can be approximated in msprime or another simulator
+as piecewise constant
+    __init__(N):
+        N (float): 'central' estimate of the effective popsize (if N varies back in time then you might choose the harmonic mean of the effective popsize up to E[tmrca]?)
 
+N defines the scale the prior uses.  Other than N, we define a prior only by a strictly positive random curve defined up to some set time which is multiplied by N to produce a history
+over time in generations.  This class defaults to a constant pop size = N
 
-def plot_size_history(Nt, max_t = None, color = 'k'):
-    N = [u[0] for u in Nt]
-    t = [u[1] for u in Nt]
+Methods:
+    sample(return_co = False): 
+        returns tuple (list, list) of times and pop sizes (and optionally any coefficients used in the construction of the curve (array-like))
 
-    N = N[1:]
-    t = np.log10(t[1:])
-
-    for k in range(len(N) - 1):
-        plt.plot([t[k], t[k + 1]], [N[k], N[k]], c = color)
-        plt.plot([t[k + 1], t[k + 1]], [N[k], N[k + 1]], c = color)
-
-    if max_t:
-        plt.plot([t[-1], max_t], [N[-1], N[-1]], c = color)
-        
-def cheb_history(K = 32, n_time_points = 128, min_frac = 0.1, max_frac = 2, mu = 0.05):
-    mean_size = 75000
-
-    rv = geom(mu)
-    pmf = rv.pmf(range(1, K))
-    
-    pmf /= np.sum(pmf)
-    
-    K = np.random.choice(range(1, K), p = pmf)
-
-    co = np.random.normal(0., 1., K + 1)
-    p = Chebyshev(co)
-    
-    x = np.linspace(-1., 1., n_time_points)
-    
-    y = p(x)
-    
-    max_p = np.max(y)
-    min_p = np.min(y)
-    
-    y = (y - min_p) / (max_p - min_p)
-    y *= np.random.uniform(min_frac, max_frac)
-    y += min_frac
-
-    t = [0] + list(np.exp(np.linspace(0, 11, n_time_points - 1)))
-
-    return t, y
-    
-
-    
-# min and max size in log10 scale
-def chebyshev_history(min_size = 3, max_size = 5, max_K = 12, n_time_points = 2048, max_time = 1e6):
-    mean_log_size = np.random.uniform(min_size, max_size)
-
-    w = np.random.uniform(0., 1.) # up to a factor of 10 size change
-
-    #k = np.random.choice(range(0, max_K + 1))
-    #co = np.random.normal(0., 1., k)
-    co = np.random.normal(0., 1., max_K + 1)
-    co *= np.random.choice([0., 1.], max_K + 1)
-    
-    t = np.linspace(0., 1., n_time_points) * (10 ** mean_log_size) * 4
-    
-    p = Chebyshev(co)
-    x = np.linspace(-1., 1., n_time_points)
-    
-    y = p(x)
-    
-    y -= np.mean(y)
-    if np.var(y) != 0:
-        y /= (np.max(y) - np.min(y))
-        
-    ret = y * w + mean_log_size
-    
-    ii = [0] + list(np.sort(np.random.choice(range(1, len(ret)), np.random.choice(range(8)), replace = False)))
-    
-    return t[ii], ret[ii]
-
-def step_stone_history(min_size = 4, max_size = np.log10(1.5e5), max_breaks = 4):
-    n_breaks = np.random.choice(range(max_breaks + 1))
-    
-    initial_size = 10 ** np.random.uniform(min_size, max_size)
-    
-    # how should we choose the knots for the simulator?
-    # we'll say that breaks happen within 10 and 1000 generations and are uniform within that
-    N = [initial_size]
-    t = [0]
-    
-    Ns = list(10 ** np.random.uniform(min_size, max_size, n_breaks))
-    ts = sorted(list(np.random.uniform(100, 1000, n_breaks)))
-    
-    N = N + Ns
-    t = t + ts
-    
-    Nt = list(zip(N, t))
-    
-    return Nt
-        
-    
-    
-    
-class DiscoalSimulator(object):
-    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
-        self.L = L
-        self.mu = mu
-        self.r = r
-        self.diploid = diploid
-        self.n_samples = n_samples
-        
-    def simulate(self, Nt = None):
-        pop_size_str = ''
-        if Nt is None:
-            t, N = chebyshev_history()
-            
-            N = 10 ** N
-            
-            Nt = list(zip(N, t))
-                        
-        N0 = Nt[0][0]
-        for (N, t) in Nt[1:]:
-            _ = ' -en {0} 0 {1}'.format(t / (4 * N0), N / N0)            
-            pop_size_str += _
-            
-        N = Nt[0][0]
-        
-        s = 10 ** np.random.uniform(-4, -2)
-        a = 2 * N * s
-        
-        cmd = 'include/discoal/discoal {0} 1 20000 -t {1} -r {2} -T' + pop_size_str + '-ws 0 -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {}'.format(a, np.random.uniform(0.05, 0.95))
-        theta = 4 * N * self.mu * self.L
-        rho = 4 * N * self.r * self.L
-        
-        cmd_ = cmd.format(self.n_samples[0], theta, rho)
-        
-        procOut = subprocess.Popen(
-            cmd_.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        output, err = procOut.communicate()
-        output = output.decode('utf-8')
-        
-        output = output.split('\n')
-        ns = [u for u in output if (('[' in u) and (']' in u))]
-        
-        trees = [from_newick(u) for u in ns]
-        
-        
-        
-        
-class BaseSimulator(object):
-    # L is the size of the simulation in base pairs
-    # specify mutation rate
-    
-    # immutable properties of the simulator are defined here:
-    # L: the size of the simulation in base pairs
-    # mu: mutation rate
-    # r: recombination rate
-    # whether or not diploid individuals are simulated (vs haploid)
-    # the number of samples
-    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [40], N = 500):
-        self.L = L
-        self.mu = mu
-        self.r = r
-        self.diploid = diploid
-        
+"""
+class PiecewisePopSizePrior(object):
+    def __init__(self, N):
         self.N = N
-        
-        self.n_samples = n_samples
-        self.sample_size = sum(n_samples)
-        
-        self.relate_path = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
-        rscript_path = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
 
-        self.rcmd = 'cd {3} && ' + rscript_path + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
-        self.relate_cmd = 'cd {6} && ' + self.relate_path + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
+    def sample_curve(self):
+        t = [0]
+        N = np.ones(1)
         
-        return
-    
-    # should return X, sites, tree sequence
-    # where X is a binary matrix and sites is an array with positions corresponding to the second axis
-    def simulate(self, *args):
-        return
-    
-    def mutate_and_return_(self, ts):
-        # simulate mutations, binary discrete model
-        mutated_ts = msprime.sim_mutations(ts, rate=self.mu, model=msprime.BinaryMutationModel())
-        
-        X = mutated_ts.genotype_matrix()
-        X[X > 1] = 1
-        X = X.T
+        return t, N, None
 
-        sites = [u.position for u in list(mutated_ts.sites())]
-        sites = np.array(sites) / self.L
+    def sample(self, return_co = True):
+        t, N, co = self.sample_curve()
         
-        return X, sites, mutated_ts
-    
-    def simulate_fw_single(self, *args):
-        X, sites, s = self.simulate(*args)
+        N *= self.N
         
-        sample_sizes = self.n_samples
-        if self.diploid:
-            sample_sizes = [2 * u for u in sample_sizes]
-        
-        ii = np.random.choice(range(s.num_trees))
-        
-        tree = s.at(ii)
-        
-        f = StringIO(tree.as_newick())  
-        root = read(f, format="newick", into=TreeNode)
-        root.assign_ids()
-                
-        populations = [tree.population(u) for u in tree.postorder() if tree.is_leaf(u)]
-        
-        tips = [u for u in root.postorder() if u.is_tip()]
-        for ix, t_ in enumerate(tips):
-            t_.pop = populations[ix]
-            
-        children = root.children
-        t = max([tree.time(u) for u in tree.postorder()])
-        
-        root.age = t
-        
-        while len(children) > 0:
-            _ = []
-            for c in children:
-                
-                c.age = c.parent.age - c.length
-                if c.is_tip():
-                    c.age = 0.
-                else:
-                    c.pop = -1
-                    
-                _.extend(c.children)
-                
-            children = copy.copy(_)
-        
-        if len(self.n_samples) > 1:
-            pop_vector = np.array(populations)
+        if return_co and (co is not None):
+            return t, N, co
         else:
-            pop_vector = None
-        F, W, _, t_coal = make_FW_rep(root, sample_sizes)
-        i, j = np.tril_indices(F.shape[0])
-        F = F[i, j]
+            return t, N
+
+"""
+"""
+class ChebyshevHistory(PiecewisePopSizePrior):
+    def __init__(self, N = 75000, max_K = 32, n_time_points = 128, bounds = (0.1, 2), K_dist = 'geom',
+                 params = {'mu' : 0.05}):
+        super().__init__(N)
         
-        return F, W, pop_vector, t_coal, X, sites, s
-       
+        self.max_K = max_K
+        self.n_time_points = n_time_points
+        self.min_frac, self.max_frac = bounds
+        
+        if K_dist == 'geom':
+            rv = geom(params['mu'])
+        elif K_dist == 'poisson':
+            rv = poisson(params['mu'])
+            
+        self.pmf = np.array(range(1, self.max_K), dtype = np.float32)
+        self.pmf /= np.sum(self.pmf)
+        
+    def sample_curve(self):
+        # sample the number of Cheby polynomials to include
+        K = np.random.choice(range(1, self.max_K), p = self.pmf)
+        
+        # sample ~ N(0, 1) (standard gaussian) coefficients
+        co = np.random.normal(0., 1., K + 1)
+        p = Chebyshev(co)
+        
+        x = np.linspace(-1., 1., self. n_time_points)
+        
+        # get the curve with range (-1, 1)
+        y = p(x)
+        
+        max_p = np.max(y)
+        min_p = np.min(y)
+        
+        # scale the curve using 
+        y = (y - min_p) / (max_p - min_p)
+        scale = np.random.uniform(self.min_frac, self.max_frac)
+        y += self.min_frac
+        
+        N = y * scale
+        
+        co = np.concatenate([np.array([scale]), co])
+
+        t = [0] + list(np.exp(np.linspace(0, 11, self.n_time_points - 1)))
+
+        return t, N, co
     
-    # returns FW image(s)
-    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.01):
-        X, sites, s = self.simulate(*args)
-        
-        sample_sizes = self.n_samples
-        if self.diploid:
-            sample_sizes = [2 * u for u in sample_sizes]
-        
-        Fs = []
-        Ws = []
-        pop_vectors = []
-        coal_times = []
-        
-        # return the ground truth tree sequence as a sequence of as a sequence of F and W condensed matrices
-        if method == 'true':
+"""
+Base class to define some the attributes common to the simulators in 'include'.  These are:
+    L (int): the length of the simulated chromosome in base pairs
+    mu (float): the mutation rate
+    r: (float): the recombination rate
+    n_samples (list of int): the number of samples taken for each population
+"""
+class BaseSimulator(object):
+    def __init__(self, L, mu, r, n_samples):
+        self.L = L
+        self.mu = mu
+        self.r = r        
+        self.n_samples = n_samples
 
-            tree = s.first()
-            ret = True
-            # should be an iteration here but need to be careful in general due to RAM
-            while ret:
-                if sample:
-                    if np.random.uniform() > sample_prob:
-                        ret = tree.next()
-                        continue
-            
-                f = StringIO(tree.as_newick())  
-                root = read(f, format="newick", into=TreeNode)
-                root.assign_ids()
-                        
-                populations = [tree.population(u) for u in tree.postorder() if tree.is_leaf(u)]
-                
-                tips = [u for u in root.postorder() if u.is_tip()]
-                for ix, t_ in enumerate(tips):
-                    t_.pop = populations[ix]
-                    
-                children = root.children
-                t = max([tree.time(u) for u in tree.postorder()])
-                
-                root.age = t
-                
-                while len(children) > 0:
-                    _ = []
-                    for c in children:
-                        
-                        c.age = c.parent.age - c.length
-                        if c.is_tip():
-                            c.age = 0.
-                        else:
-                            c.pop = -1
-                            
-                        _.extend(c.children)
-                        
-                    children = copy.copy(_)
-        
-                pop_vector = np.array(populations)
-                F, W, _, t_coal = make_FW_rep(root, sample_sizes)
-                i, j = np.tril_indices(F.shape[0])
-                F = F[i, j]
-                
-                Fs.append(F)
-                Ws.append(W)
-                if len(self.n_samples) > 1:
-                    pop_vectors.append(pop_vector)
-                else:
-                    pop_vectors.append(None)
-                coal_times.append(t_coal)
-                
-                ret = tree.next()
-                
-        # return the inferred tree sequence from Relate as a sequence of F and W condensed matrices
-        elif method == 'relate':
-            Fs = []
-            Ws = []
-            pop_vectors = []
-            coal_times = []
-            
-            n_samples = sum(self.n_samples)
-         
-            if self.diploid:
-                n_samples = n_samples // 2
-            
-            temp_dir = tempfile.TemporaryDirectory()
-            
-            odir = os.path.join(temp_dir.name, 'relate')
-            os.mkdir(odir)
-            
-            ms_file = os.path.join(temp_dir.name, 'sim.vcf')
-            
-            try:
-                f = open(os.path.join(temp_dir.name, 'sim.vcf'), 'w')
-                s.write_vcf(f)
-                f.close()
-            except:
-                return None
-            
-            tag = ms_file.split('/')[-1].split('.')[0]
-            cmd_ = self.rcmd.format('sim.haps', 'sim.sample', '../sim', odir) + ' >/dev/null 2>&1'
-            os.system(cmd_)
-            
-            map_file = ms_file.replace('.vcf', '.map')
-            
-            ofile = open(map_file, 'w')
-            ofile.write('pos COMBINED_rate Genetic_Map\n')
-            ofile.write('0 {} 0\n'.format(self.r * self.L))
-            ofile.write('{0} {1} {2}\n'.format(self.L, self.r * self.L, self.r * 10**8))
-            ofile.close()
-            
-            
-            haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))
-            samples = list(map(os.path.abspath, [u.replace('.haps', '.sample') for u in haps if os.path.exists(u.replace('.haps', '.sample'))]))
-            
-            # we need to rewrite the haps files (for haploid organisms)
-            for sample in samples:
-                f = open(sample, 'w')
-                f.write('ID_1 ID_2 missing\n')
-                f.write('0    0    0\n')
-                if self.diploid:
-                    for k in range(n_samples):
-                        f.write('UNR{} UNR{} 0\n'.format(k + 1, k + 1))
-                else:
-                    for k in range(n_samples):
-                        f.write('UNR{} NA 0\n'.format(k + 1))
-                
-            f.close()
-            
-            ofile = haps[0].split('/')[-1].replace('.haps', '') + '_' + map_file.split('/')[-1].replace('.map', '').replace(tag, '').replace('.', '')
-            if ofile[-1] == '_':
-                ofile = ofile[:-1]
-
-            cmd_ = self.relate_cmd.format(self.mu, 2 * self.N, haps[0], 
-                                         samples[0], os.path.abspath(map_file), 
-                                         ofile, odir) + ' >/dev/null 2>&1'
-
-            
-            os.system(cmd_)
-            
-            try:
-                if len(self.n_samples) == 1:
-                    _ = self.n_samples + [0]
-                else:
-                    _ = self.n_samples
-                
-                anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-                Fs, Ws, snps, pop_vectors, coal_times = read_anc(anc_file, _)
-            except:
-                return None
-            
-            temp_dir.cleanup()
-            
-        return Fs, Ws, pop_vectors, coal_times, X, sites, s
-    
 class SlimSimulator(object):
     """
     script (str): points to a slim script
@@ -527,348 +231,271 @@ class SlimSimulator(object):
         self.args = args
         self.n_samples = n_samples
         self.L = L
-        
-    def simulate(self, *args):
-        args = args + (self.script,)
-        
-        seed = random.randint(0, 2**32-1)
-        slim_cmd = "include/SLiM/build/slim -seed {} -d physLen={} ".format(seed, self.L)
 
-        if self.args is not None:
-            slim_cmd += self.args.format(*args)
-            slim_cmd += " {}".format(self.script)    
-        else:
-            slim_cmd += "{}".format(self.script)
-
-        procOut = subprocess.Popen(
-            slim_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        output, err = procOut.communicate()
-                    
-        X, pos, y_ = read_slim(output, self.n_samples, self.L)
-        pos = np.array(pos)
-        X = np.array(X)
-        
-        y = np.zeros(X.shape)
-        
-        for ix, start_end in enumerate(y_):
-            if len(start_end) == 0:
-                continue
-            
-            for start,end in start_end:
-            
-                ii = np.where((pos >= start) & (pos <= end))[0]
-                
-                y[ix, ii] = 1.
-        
-        return X, pos, y
+"""
+"""        
+class BaseMSPrimeSimulator(BaseSimulator):
+    # L is the size of the simulation in base pairs
+    # specify mutation rate
     
-class StepStoneSimulator(BaseSimulator):
-    def __init__(self, L = int(1e4), mu = 1.25e-8, r = 1.0e-8, diploid = False, n_samples = [129]):
-        super().__init__(L, mu, r, diploid, n_samples)
+    # immutable properties of the simulator are defined here:
+    # L: the size of the simulation in base pairs
+    # mu: mutation rate
+    # r: recombination rate
+    # whether or not diploid individuals are simulated (vs haploid)
+    # the number of samples
+    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, ploidy = 1, 
+                 n_samples = [129], N = 75000):
+        self.L = L
+        self.mu = mu
+        self.r = r
+        self.n_samples = n_samples
         
-    # built in prior for this one
-    def simulate(self, Nt = None):
-        n_samples = self.sample_size
+        self.ploidy = ploidy
         
+        self.sample_size = sum(n_samples)
+
+        self.rcmd = 'cd {3} && ' + RSCRIPT_PATH + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
+        self.relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
+        
+        self.co = None
+        self.demography = None
+        
+        self.N = N
+        
+        return
+    
+    # here's where you should define how to use the prior to create the msprime demography
+    # must be over-written in subclass
+    def make_demography(self):
         demography = msprime.Demography()
-        if Nt is None:
-            t, N = cheb_history()
-            
-            Nt = list(zip(N, t))
+        
+        return demography
+    
+    def simulate(self, *args, verbose = False):
+        # get the current logging level
+        logger = logging.getLogger(__name__)
+        current_level = logger.getEffectiveLevel()
+        
+        if not verbose:
+            # to quiet down msprime
+            logging.basicConfig(level = logging.ERROR, force = True)
+        else:
+            logging.basicConfig(level = logging.INFO, force = True)
+        self.demography = self.make_demography()
+        
+        # simulate ancestry
+        ts = msprime.sim_ancestry(
+            #sample_size=2 * population_size,
+            samples = sum(self.n_samples),
+            sequence_length = self.L,
+            recombination_rate=self.r,
+            ploidy = self.ploidy,
+            demography = self.demography,
+        )
+        
+        # set the logging level back to what it was before the call to msprime
+        logging.basicConfig(level = current_level, force = True)
+        
+        return self.mutate_and_return_(ts)
+    
+    def mutate_and_return_(self, ts):
+        result = dict()
+        
+        # simulate mutations, binary discrete model
+        mutated_ts = msprime.sim_mutations(ts, rate=self.mu, model=msprime.BinaryMutationModel())
+        
+        X = mutated_ts.genotype_matrix()
+        X[X > 1] = 1
+        X = X.T
+
+        sites = [u.position for u in list(mutated_ts.sites())]
+        sites = np.array(sites) / self.L
+        
+        result['x'] = X
+        result['pos'] = sites
+        result['ts'] = ts
+        
+        return result
+        
+    def simulate_fw_single(self, *args):
+        result = self.simulate(*args)
+        s = result['ts']
+        
+        sample_sizes = self.n_samples
+        if self.diploid:
+            sample_sizes = [2 * u for u in sample_sizes]
+        
+        ii = np.random.choice(range(s.num_trees))
+        
+        tree = s.at(ii)
+        
+        # convert tree to encoding
+        F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, (self.ploidy == 2))
+        
+        result['F'] = F
+        result['W'] = W
+        result['t_coal'] = t_coal
+        
+        return result
+    
+    def simulate_relate(self, *args):
+        result = self.simulate(*args)
+        s = result['ts']
+        
+        Fs, Ws, _, _, coal_times = relate(result['x'], result['pos'], sum(self.n_samples), self.mu, self.r, self.N, self.L, 
+                                          self.ploidy == 2)
+        
+        result['F'] = Fs
+        result['W'] = Ws
+        result['t_coal'] = coal_times
+        
+        return result
+    
+        Fs = []
+        Ws = []
+        pop_vectors = []
+        coal_times = []
+        
+        n_samples = sum(self.n_samples)
      
+        if self.ploidy == 2:
+            n_samples = n_samples // 2
+        
+        temp_dir = tempfile.TemporaryDirectory()
+        temp_dir.name = 'temp'
+        
+        os.mkdir(temp_dir.name)
+        
+        odir = os.path.join(temp_dir.name, 'relate')
+        os.mkdir(odir)
+        
+        ms_file = os.path.join(temp_dir.name, 'sim.vcf')
+        s.write_vcf(sys.stdout)
+        
+        try:
+            f = open(os.path.join(temp_dir.name, 'sim.vcf'), 'w')
+            s.write_vcf(f)
+            f.close()
+        except:
+            return None
+        
+        tag = ms_file.split('/')[-1].split('.')[0]
+        cmd_ = self.rcmd.format('sim.haps', 'sim.sample', '../sim', odir)
+        os.system(cmd_)
+        
+        map_file = ms_file.replace('.vcf', '.map')
+        
+        ofile = open(map_file, 'w')
+        ofile.write('pos COMBINED_rate Genetic_Map\n')
+        ofile.write('0 {} 0\n'.format(self.r * self.L))
+        ofile.write('{0} {1} {2}\n'.format(self.L, self.r * self.L, self.r * 10**8))
+        ofile.close()
+        
+        haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))
+        samples = list(map(os.path.abspath, [u.replace('.haps', '.sample') for u in haps if os.path.exists(u.replace('.haps', '.sample'))]))
+        
+        # we need to rewrite the haps files (for haploid organisms)
+        for sample in samples:
+            f = open(sample, 'w')
+            f.write('ID_1 ID_2 missing\n')
+            f.write('0    0    0\n')
+            if self.ploidy == 2:
+                for k in range(n_samples):
+                    f.write('UNR{} UNR{} 0\n'.format(k + 1, k + 1))
+            else:
+                for k in range(n_samples):
+                    f.write('UNR{} NA 0\n'.format(k + 1))
+            
+        f.close()
+        
+        ofile = haps[0].split('/')[-1].replace('.haps', '') + '_' + map_file.split('/')[-1].replace('.map', '').replace(tag, '').replace('.', '')
+        if ofile[-1] == '_':
+            ofile = ofile[:-1]
+        
+
+        cmd_ = self.relate_cmd.format(self.mu, 2 * self.N, haps[0], 
+                                     samples[0], os.path.abspath(map_file), 
+                                     ofile, odir)
+        os.system(cmd_)
+        
+        try:
+            if len(self.n_samples) == 1:
+                _ = self.n_samples + [0]
+            else:
+                _ = self.n_samples
+            
+            anc_file = os.path.join(odir, '{}.anc'.format(ofile))
+            Fs, Ws, snps, pop_vectors, coal_times = read_anc(anc_file, _)
+        except Exception as e:
+            print(e)
+            return None
+        
+        #temp_dir.cleanup()
+        
+        result['F'] = Fs
+        result['W'] = Ws
+        result['t_coal'] = coal_times
+        
+        return result
+        
+    # returns FW image(s)
+    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.01):
+        result = self.simulate(*args)
+        s = result['ts']
+        
+        Fs = []
+        Ws = []
+        pop_vectors = []
+        coal_times = []
+        
+        tree = s.first()
+        ret = True
+        # should be an iteration here but need to be careful in general due to RAM
+        while ret:
+            if sample:
+                if np.random.uniform() > sample_prob:
+                    ret = tree.next()
+                    continue
+        
+            F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, self.ploidy == 2)
+            
+            Fs.append(F)
+            Ws.append(W)
+            if len(self.n_samples) > 1:
+                pop_vectors.append(pop_vector)
+            else:
+                pop_vectors.append(None)
+            coal_times.append(t_coal)
+            
+            ret = tree.next()
+                
+        result['F'] = Fs
+        result['W'] = Ws
+        result['pop'] = pop_vectors
+        result['t_coal'] = coal_times
+        
+        return result
+        
+class StepStoneSimulator(BaseMSPrimeSimulator):
+    def __init__(self, prior = ChebyshevHistory(), **kwargs):
+        super().__init__(**kwargs)
+        
+        self.prior = prior
+        
+    def make_demography(self):
+        demography = msprime.Demography()
+        
+        t, N, co = self.prior.sample()
+        self.co = co
+        
+        Nt = list(zip(N, t))
+        
         N0, _ = Nt[0]
         demography.add_population(name="A", initial_size=N0)
         
         for N1, T in Nt[1:]:
             demography.add_population_parameters_change(time=T, initial_size=N1)
-        
-        # simulate ancestry
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = sum(self.n_samples),
-            sequence_length=self.L,
-            recombination_rate=self.r,
-            ploidy = 1,
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            #Ne=population_size
-        )
-        
-        return self.mutate_and_return_(ts)
-    
-import demesdraw
-    
-class ZigZagSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = False, n_samples = [129]):
-        super().__init__(L, mu, r, diploid, n_samples)
-        
-    def generate_params(self, Neps = 0.1, Nanc = (0.05, 1.25), ):
-        N0 = 70000 * np.random.uniform(1 - Neps, 1 + Neps)
-        
-        Nanc = N0 * np.random.uniform(Nanc[0], Nanc[1])
-        
-        k = np.random.choice(range(1, 12))
-        
-        T = np.exp(sorted(np.linspace(np.random.uniform(4, 5), np.random.uniform(9.5, 10.5), k)))
-        alphas = np.exp(np.random.normal() + -7) * np.random.choice([-1, 1.], k - 1)
-        
-        return N0, Nanc, T, alphas
-        
-    def simulate(self, params = None):
-        if params is None:
-            N0, Nanc, T, alphas = self.generate_params()
-        
-        #print(N0, Nanc, T, alphas)
-        
-        demography = msprime.Demography()
-        demography.add_population(name="A", initial_size=N0)
-        
-        for t, a in zip(T[:-1], alphas):
-            demography.add_population_parameters_change(time = t, growth_rate = a)
             
-        demography.add_population_parameters_change(time = T[-1], growth_rate = 0., initial_size = Nanc)
-        debug = demography.debug()
-        
-        sizes = debug.population_size_trajectory(np.linspace(0., np.max(T) * 4, 1000)).flatten()
-        
-        if np.any(sizes > 1e6) or np.any(sizes < 10):
-            return self.simulate(params)
-        
-        """
-        graph = demography.to_demes()
-        ax = demesdraw.tubes(graph, log_time = True)
-        plt.show()
-        plt.close()
-        """
-        # simulate ancestry
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = sum(self.n_samples),
-            sequence_length=self.L,
-            recombination_rate=self.r,
-            ploidy = 1,
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            #Ne=population_size
-        )
-        
-        return self.mutate_and_return_(ts)
-    
-class BottleNeckSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 1.26e-8, r = 1.007e-8, diploid = True, n_samples = [129]):
-        super().__init__(L, mu, r, diploid, n_samples)
-        
-    # population size up to T = N0
-    # population size after T = N1
-    # time of bottleneck = T
-    def simulate(self, N0, N1, T):
-        n_samples = self.sample_size
-        
-        demography = msprime.Demography()
-        demography.add_population(name="A", initial_size=N0)
-        demography.add_population_parameters_change(time=T, initial_size=N1)
-        
-        # simulate ancestry
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = sum(self.n_samples),
-            sequence_length=self.L,
-            recombination_rate=self.r,
-            ploidy = 1,
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            #Ne=population_size
-        )
-        
-        return self.mutate_and_return_(ts)
-    
-class SimpleCoal(BaseSimulator):
-    def __init__(self, L = int(1e4), mu = 1e-6, r = 0., diploid = False, n_samples = [129]):
-        super().__init__(L, mu, r, diploid, n_samples)
-
-    # here we specify recombination rate in the simulation command
-    def simulate(self, N = 1000, r = 0.):
-        demography = msprime.Demography()
-        demography.add_population(name="A", initial_size=N)
-        
-        # simulate ancestry
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = sum(self.n_samples),
-            sequence_length=self.L,
-            recombination_rate = r,
+        return demography    
             
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            ploidy = 1,
-            #Ne=population_size
-        )
-        
-        return self.mutate_and_return_(ts)
-    
-class PopSplitSimulator(BaseSimulator):
-    def __init__(self, L = int(1e8), mu = 5.7e-9, r = 3.386e-9, diploid = True, n_samples = [22, 18]):
-        super().__init__(L, mu, r, diploid, n_samples)
-        
-    def simulate(self, Nanc, N0, N1, split_time):
-        samples = []
-        samples.append(msprime.SampleSet(self.n_samples[0], population = 'A', ploidy = 2))
-        samples.append(msprime.SampleSet(self.n_samples[1], population = 'B', ploidy = 2))
-        
-        demography = msprime.Demography()
-        demography.add_population(name="A", initial_size = N0, growth_rate = 0.)
-        demography.add_population(name="B", initial_size = N1, growth_rate = 0.)
-        demography.add_population(name="C", initial_size = Nanc, growth_rate = 0.)
-        demography.add_population_split(time = split_time, derived = ["A", "B"], ancestral = "C")
-        
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = samples,
-            #additional_nodes=(msprime.NodeType.RECOMBINANT),
-            sequence_length=self.L,
-            recombination_rate=self.r,
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            #coalescing_segments_only=False
-            #Ne=population_size
-        )
-    
-        return self.mutate_and_return_(ts)
-    
-class TwoPopMigrationSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 1e-6, r = 1e-8, diploid = False, n_samples = [65, 64]):
-        super().__init__(L, mu, r, diploid, n_samples)
-        
-    # constant size for two popuations and migration coefficient
-    def simulate(self, N0, N1, Nanc, m01, split_time):
-        demography = msprime.Demography()
-        demography.add_population(name="A", initial_size = N0, growth_rate = 0.)
-        demography.add_population(name="B", initial_size = N1, growth_rate = 0.)
-        demography.add_population(name="C", initial_size = Nanc, growth_rate = 0.)
-        demography.add_population_split(time = split_time, derived = ["A", "B"], ancestral = "C")
-        
-        demography.add_migration_rate_change(0., rate = m01, source = "A", dest = "B")
-        demography.sort_events()
-        
-        samples = []
-        samples.append(msprime.SampleSet(self.n_samples[0], population = 'A', ploidy = 1))
-        samples.append(msprime.SampleSet(self.n_samples[1], population = 'B', ploidy = 1))
-        # simulate ancestry
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = samples,
-
-            sequence_length=self.L,
-            recombination_rate=self.r,
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            #Ne=population_size
-            ploidy = 1
-        )
-        
-        return self.mutate_and_return_(ts)
-    
-class SecondaryContactSimulator(BaseSimulator):
-    def __init__(self, L = int(1e6), mu = 5.4e-9, r = 3.386e-9, diploid = True, n_samples = [22, 8]):
-        super().__init__(L, mu, r, diploid, n_samples)
-    
-    
-    def simulate(self, Nanc, N_mainland, N_island, T_split, T_contact, m):
-        """
-        Simulates a population split with initial isolation, followed by secondary contact with migration.
-    
-        Parameters:
-            Nanc (float): Ancestral population size.
-            N_mainland (float): Mainland population size after split.
-            N_island (float): Island population size after split.
-            T_split (float): Time of initial population split in generations.
-            T_contact (float): Time of secondary contact and migration onset.
-            m (float): Migration rate between island and mainland populations.
-            mutation_rate (float): Mutation rate per base per generation.
-            recombination_rate (float): Recombination rate per base per generation.
-            sequence_length (float): Length of the simulated sequence.
-    
-        Returns:
-            mutated_ts (tskit.TreeSequence): Mutated tree sequence with split and secondary contact.
-        """
-        # Define demography
-        # Define demography
-        demography = msprime.Demography()
-        demography.add_population(name="ancestral", initial_size=Nanc)
-        demography.add_population(name="mainland", initial_size=N_mainland)
-        demography.add_population(name="island", initial_size=N_island)
-    
-        # Define the population split at time T_split
-        demography.add_population_split(time=T_split, derived=["mainland", "island"], ancestral="ancestral")
-        demography.add_migration_rate_change(0., rate = m, source = "mainland", dest = "island")
-        demography.add_migration_rate_change(T_contact, rate = 0., source = "mainland", dest = "island")
-        demography.sort_events()
-    
-        samples = []
-        samples.append(msprime.SampleSet(self.n_samples[0], population = 'mainland', ploidy = 2))
-        samples.append(msprime.SampleSet(self.n_samples[1], population = 'island', ploidy = 2))
-        # simulate ancestry
-        ts = msprime.sim_ancestry(
-            #sample_size=2 * population_size,
-            samples = samples,
-
-            sequence_length=self.L,
-            recombination_rate=self.r,
-            #mutation_rate=mutation_rate,
-            demography=demography,
-            #Ne=population_size
-        )
-        
-        return self.mutate_and_return_(ts)
-    
-
-    
-if __name__ == '__main__':
-    for k in range(12):
-        t, y = cheb_history()
-        Nt = list(zip(y, t))
-        
-        
-        
-        plot_size_history(Nt)
-        
-    plt.show()
-    
-    sys.exit()
-    
-    t, N = chebyshev_history()
-    
-    N = 10 ** N
-    
-    Nt = list(zip(N, t))
-    plot_size_history(Nt)
-    plt.show()
-    sys.exit()
-    
-    sim = DiscoalSimulator()
-    
-    sim.simulate()
-    sys.exit()
-    
-    from scipy.spatial.distance import pdist, squareform
-    
-    sim = StepStoneSimulator(L = int(1e4), mu = 5.4e-9, r = 3.386e-9)
-
-    for k in range(16):
-        Fs, Ws, pop_vectors, coal_times, X, sites, ts = sim.simulate_fw()
-        W = Ws[0]
-    
-        W = np.log(W + 1e-12)
-        print(np.percentile(W, 10), np.percentile(W, 25), np.percentile(W, 50), np.percentile(W, 75), np.percentile(W, 90))        
-    
-    
-    """
-    h = []
-    
-    sim = StepStoneSimulator(int(1e4), r = 1e-8)
-    
-    for k in range(512):
-        F, W, pop_vector, t_coal, X, sites, s = sim.simulate_fw_single()
-        print(X.shape)
-    """
-    
