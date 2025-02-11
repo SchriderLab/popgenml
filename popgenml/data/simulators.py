@@ -31,7 +31,7 @@ import newick
 import scipy
 from scipy.stats import poisson, geom
 from fw import tree_to_fw
-from io_ import read_slim
+#from io_ import read_slim
 
 def from_newick(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None
