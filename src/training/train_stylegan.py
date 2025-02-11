@@ -14,7 +14,6 @@ import sys
 # patch until package is finished
 sys.path.append('popgenml/data/')
 
-from simulators import TwoPopMigrationSimulator
 from data_loaders import MSPrimeFWLoader
 import importlib
 
@@ -706,7 +705,7 @@ if __name__ == "__main__":
     else:
         prio = args.prior
     
-    loader = MSPrimeFWLoader(prior, sim, batch_size = args.batch, method = args.method)
+    loader = MSPrimeFWLoader(sim, batch_size = args.batch, method = args.method)
     pickle.dump({'cdf' : loader.cdf}, open(os.path.join(args.odir, 'cdf.pkl'), 'wb'))
     
     if get_rank() == 0 and wandb is not None and args.wandb:

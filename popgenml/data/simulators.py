@@ -31,6 +31,7 @@ import newick
 import scipy
 from scipy.stats import poisson, geom
 from fw import tree_to_fw
+from io_ import read_slim
 
 def from_newick(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None
@@ -175,8 +176,11 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         elif K_dist == 'poisson':
             rv = poisson(params['mu'])
             
-        self.pmf = np.array(range(1, self.max_K), dtype = np.float32)
+        self.pmf = rv.pmf(np.array(range(1, self.max_K), dtype = np.float32))
         self.pmf /= np.sum(self.pmf)
+        
+        plt.plot(self.pmf)
+        plt.show()
         
     def sample_curve(self):
         # sample the number of Cheby polynomials to include
@@ -194,11 +198,12 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         max_p = np.max(y)
         min_p = np.min(y)
         
-        # scale the curve using 
         y = (y - min_p) / (max_p - min_p)
-        scale = np.random.uniform(self.min_frac, self.max_frac)
-        y += self.min_frac
         
+        scale = np.random.uniform(self.min_frac, self.max_frac)
+        eps = np.random.uniform(self.min_frac, self.min_frac * 2)
+        
+        y += eps                
         N = y * scale
         
         co = np.concatenate([np.array([scale]), co])
@@ -221,6 +226,8 @@ class BaseSimulator(object):
         self.r = r        
         self.n_samples = n_samples
 
+"""
+"""
 class SlimSimulator(object):
     """
     script (str): points to a slim script
@@ -231,6 +238,40 @@ class SlimSimulator(object):
         self.args = args
         self.n_samples = n_samples
         self.L = L
+        
+    def simulate(self, *args):
+        args = args + (self.script,)
+        
+        seed = random.randint(0, 2**32-1)
+        slim_cmd = "include/SLiM/build/slim -seed {} -d physLen={} ".format(seed, self.L)
+
+        if self.args is not None:
+            slim_cmd += self.args.format(*args)
+            slim_cmd += " {}".format(self.script)    
+        else:
+            slim_cmd += "{}".format(self.script)
+
+        procOut = subprocess.Popen(
+            slim_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output, err = procOut.communicate()
+                    
+        X, pos, y_ = read_slim(output, self.n_samples, self.L)
+        pos = np.array(pos)
+        X = np.array(X)
+        
+        y = np.zeros(X.shape)
+        
+        for ix, start_end in enumerate(y_):
+            if len(start_end) == 0:
+                continue
+            
+            for start,end in start_end:
+            
+                ii = np.where((pos >= start) & (pos <= end))[0]
+                
+                y[ix, ii] = 1.
+        
+        return X, pos, y
 
 """
 """        
@@ -323,7 +364,7 @@ class BaseMSPrimeSimulator(BaseSimulator):
         s = result['ts']
         
         sample_sizes = self.n_samples
-        if self.diploid:
+        if self.ploidy == 2:
             sample_sizes = [2 * u for u in sample_sizes]
         
         ii = np.random.choice(range(s.num_trees))

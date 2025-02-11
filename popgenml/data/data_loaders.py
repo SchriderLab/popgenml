@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 import torch
 from collections import OrderedDict
 import random
+from tqdm import tqdm
 
 class H5UDataGenerator(object):
     def __init__(self, ifile, keys = None, 
@@ -36,11 +37,7 @@ class H5UDataGenerator(object):
         
         self.ix = 0
         self.ix_val = 0
-            
-    def define_lengths(self):
-        self.length = len(self.keys) // (self.batch_size // self.chunk_size)
-        self.val_length = len(self.val_keys) // (self.batch_size // self.chunk_size)
-        
+                    
     def get_batch(self):
         X = []
         Y = []
@@ -202,22 +199,9 @@ from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
 
 class MSPrimeFWLoader(object):
-    def __init__(self, prior, simulator, size = 128, batch_size = 32, method = 'true', cdf = None, n_per = 2):
-        # prior is a dictionary specifying a uniform distribution over some or all parameters
-        # like {"N" : (100, 1000, -1), "alpha", (-3, -5, 10), "T" : 3.14159}
-        # with max min and the log base (-1 for linear scale), in the case of single float the parameter is held constant
-        
-        # routine for loading the prior from a CSV
-        if type(prior) == str:
-            x = [u.strip().split(',') for u in open(prior, 'r').readlines()]
-            names = [u[0] for u in x]
-            max_min_scale = [tuple(map(float, u[1:])) for u in x]
-        
-            self.params = OrderedDict(zip(names, max_min_scale))
-        elif prior is None:
-            self.params = OrderedDict()
-            
+    def __init__(self, simulator, size = 128, batch_size = 32, method = 'true', cdf = None, n_per = 2, verbose = True):
         self.method = method
+        
         self.cdf = cdf
         self.n_per = n_per
         self.method = method
@@ -230,7 +214,6 @@ class MSPrimeFWLoader(object):
         self.simulator = simulator
         self.f_size = sum(self.simulator.n_samples) - 1
         
-        
         if len(self.simulator.n_samples) > 1:
             s = sum(self.simulator.n_samples) - 1
             self.p_im = PopVectorImage(s, n_b = self.simulator.n_samples[0])
@@ -238,8 +221,8 @@ class MSPrimeFWLoader(object):
             self.p_im = None
         
         if self.cdf is None:
-            self.compute_cdf()
-        
+            self.compute_cdf(verbose = verbose)
+                
     def get_batch(self):
         X = []
         for k in range(self.batch_size):
@@ -250,13 +233,23 @@ class MSPrimeFWLoader(object):
             
         return torch.FloatTensor(np.array(X))
     
-    def compute_cdf(self, n_samples = 1024, n_bins = 1024):
-        print('computing cdf...')
+    def plot_cdf(self, ofile = None, n_points = 128):
+        x = np.linspace(np.min(self.cdf.x), np.max(self.cdf.x), n_points)
         
+        plt.plot(x, self.cdf(x))
+        plt.show()
+    
+    def compute_cdf(self, n_samples = 1024, n_bins = 1024, n_samples_minmax = 512, verbose = False):
         mins = []
         maxs = []
         
-        for ix in range(n_samples):
+        if verbose:
+            print('getting estimate of log max and min coal time diff...')
+            print('using {} samples...'.format(n_samples_minmax))
+            ii = tqdm(range(n_samples_minmax))
+        else:
+            ii = range(n_samples_minmax)
+        for ix in ii:
             W = None
             while W is None:
                 W = self.get_W_()
@@ -271,7 +264,12 @@ class MSPrimeFWLoader(object):
         bins = np.linspace(np.min(mins) - 1, np.max(maxs) + 1, n_bins + 1)
         h = np.zeros(len(bins) - 1)
         
-        for ix in range(n_samples):
+        if verbose:
+            print('computing cdf with {} samples...'.format(n_samples))
+            ii = tqdm(range(n_samples))
+        else:
+            ii = range(n_samples)
+        for ix in ii:
             W = None
             while W is None:
                 W = self.get_W_()
@@ -295,62 +293,26 @@ class MSPrimeFWLoader(object):
         y = beta.ppf(h, 5, 5)
         x = np.array(x)
         
-        print('done!...')
         _, ii = np.unique(y, return_index = True)
         
         self.cdf = interp1d(x[ii], y[ii])
         
     def get_W_(self, n_per = -1):
-        params = []
+        ret = self.simulator.simulate_fw_single()
         
-        for p in self.params.keys():
-            if type(self.params[p]) != tuple:
-                # assume float or integer
-                params.append(self.params[p])
-            else:
-                mi, ma, log_scale = self.params[p]
-                if log_scale == -1:
-                    params.append(np.random.uniform(mi, ma))
-                else:
-                    params.append(log_scale ** np.random.uniform(mi, ma))
-        
-        if len(params) > 1:
-            ret = self.simulator.simulate_fw_single(*params)
-        else:
-            ret = self.simulator.simulate_fw_single(None)
-        
-        if ret is not None:
-            F, W, pop_mat, coal_times, X, sites, ts = ret
-        else:
-            return ret
-        
-        W = np.array(W)
-        
-        return W
-    
+        return ret['W']
+                
     def get_replicate_(self, return_params = False, params = None):
-        if params is None:
-            params = []
-            
-            for p in self.params.keys():
-                if type(self.params[p]) != tuple:
-                    # assume float or integer
-                    params.append(self.params[p])
-                else:
-                    mi, ma, log_scale = self.params[p]
-                    if log_scale == -1:
-                        params.append(np.random.uniform(mi, ma))
-                    else:
-                        params.append(log_scale ** np.random.uniform(mi, ma))
-                    
-        if len(params) > 1:
-            ret = self.simulator.simulate_fw_single(*params)
-        else:
-            ret = self.simulator.simulate_fw_single(None)
+        ret = self.simulator.simulate_fw_single()
             
         if ret is not None:
-                    
-            F, W, pop_mat, coal_times, Xmat, sites, ts = ret
+            F = ret['F']
+            W = ret['W']
+            
+            if 'pop' in ret.keys():
+                pop_mat = ret['pop']
+            else:
+                pop_mat = None
         else:
             return ret
         
@@ -389,12 +351,9 @@ class MSPrimeFWLoader(object):
             
         X = np.array(X)
         
-        if not return_params:
-            return X
-        else:
-            return X, Xmat, sites, params
+        return X
         
-    def get_median_replicate(self):
+    def get_median_replicate(self, sample):
         F, W, pop_mat, coal_times, Xmat, sites, ts = self.simulator.simulate_fw(sample = True)
         
         F = np.array(F)
