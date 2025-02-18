@@ -30,12 +30,18 @@ from torchvision import utils
 import matplotlib.pyplot as plt
 import pandas as pd
 
+logger = logging.getLogger(__name__)
+current_level = logger.getEffectiveLevel()
+logging.basicConfig(level = logging.ERROR)
+
 def parse_args():
     # Argument Parser
     parser = argparse.ArgumentParser()
     # my args
     parser.add_argument("--verbose", action = "store_true", help = "display messages")
     parser.add_argument("--weights", default = "None")
+    parser.add_argument("--cdf", default = "None")
+    
     parser.add_argument("--odir", default = "None")
     
     args = parser.parse_args()
@@ -56,6 +62,17 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Using " + str(device) + " as device")
+    
+    sim = StepStoneSimulator()
+    loader = MSPrimeFWLoader(sim)
+    
+    model = resnet34(in_channels = 3, num_classes = args.latent).to(device)
+       
+if __name__ == '__main__':
+    main()
     
     
     

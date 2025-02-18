@@ -330,7 +330,7 @@ class MSPrimeFWLoader(object):
             X, _ = self.format_(ret['F'][k], ret['W'][k], None)
             Xs.append(X)
         
-        return torch.FloatTensor(np.array(Xs))
+        return torch.FloatTensor(np.concatenate(Xs, axis = 0))
     
     def format_(self, F, W, pop_mat):
         W = np.array(W)
