@@ -31,7 +31,7 @@ import newick
 import scipy
 from scipy.stats import poisson, geom
 from fw import tree_to_fw
-#from io_ import read_slim
+from io_ import read_slim
 
 def from_newick(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None
@@ -163,13 +163,15 @@ class PiecewisePopSizePrior(object):
 """
 """
 class ChebyshevHistory(PiecewisePopSizePrior):
-    def __init__(self, N = 75000, max_K = 32, n_time_points = 128, bounds = (0.1, 2), K_dist = 'geom',
+    def __init__(self, N = 75000, max_K = 12, n_time_points = 128, max_eps = 0.9,
+                 min_eps = 0.05, K_dist = 'geom',
                  params = {'mu' : 0.05}):
         super().__init__(N)
         
         self.max_K = max_K
         self.n_time_points = n_time_points
-        self.min_frac, self.max_frac = bounds
+        self.max_eps = max_eps
+        self.min_eps = min_eps
         
         if K_dist == 'geom':
             rv = geom(params['mu'])
@@ -179,15 +181,13 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         self.pmf = rv.pmf(np.array(range(1, self.max_K), dtype = np.float32))
         self.pmf /= np.sum(self.pmf)
         
-        plt.plot(self.pmf)
-        plt.show()
-        
     def sample_curve(self):
         # sample the number of Cheby polynomials to include
-        K = np.random.choice(range(1, self.max_K), p = self.pmf)
+        K = self.max_K - 1
         
         # sample ~ N(0, 1) (standard gaussian) coefficients
         co = np.random.normal(0., 1., K + 1)
+        
         p = Chebyshev(co)
         
         x = np.linspace(-1., 1., self. n_time_points)
@@ -198,15 +198,13 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         max_p = np.max(y)
         min_p = np.min(y)
         
-        y = (y - min_p) / (max_p - min_p)
+        y = ((y - min_p) / (max_p - min_p)) * 2 - 1
         
-        scale = np.random.uniform(self.min_frac, self.max_frac)
-        eps = np.random.uniform(self.min_frac, self.min_frac * 2)
+        eps = np.random.uniform(self.min_eps, self.max_eps)
         
-        y += eps                
-        N = y * scale
+        N = y * eps + 1
         
-        co = np.concatenate([np.array([scale]), co])
+        co = np.concatenate([np.array([eps]), np.pad(co, ((0, self.max_K - co.shape[0])))])
 
         t = [0] + list(np.exp(np.linspace(0, 11, self.n_time_points - 1)))
 
@@ -518,6 +516,19 @@ class BaseMSPrimeSimulator(BaseSimulator):
         
         return result
         
+class SimpleCoal(BaseMSPrimeSimulator):
+    def __init__(self, N = 75000, **kwargs):
+        super().__init__(**kwargs)
+        
+        self.N = N
+        
+    def make_demography(self):
+        demography = msprime.Demography()
+        
+        demography.add_population(name="A", initial_size=self.N)
+        
+        return demography
+            
 class StepStoneSimulator(BaseMSPrimeSimulator):
     def __init__(self, prior = ChebyshevHistory(), **kwargs):
         super().__init__(**kwargs)

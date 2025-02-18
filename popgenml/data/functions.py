@@ -27,6 +27,10 @@ def pad_sequences(sequences, max_length=None, padding_value=0):
 
     return np.array(padded_sequences)
 
+
+        
+
+
 """
 x: (ind, sites) genotype matrix
 pos: (sites,) array of positions
@@ -223,6 +227,9 @@ def to_unique(X):
     
     return x
 
+"""
+Fast seriation.  (find source)
+"""
 def seriate_spectral(x):    
     C = pairwise_distances(x)
     C[np.where(np.isnan(C))] = 0.
@@ -237,8 +244,38 @@ def seriate_spectral(x):
     
     return x, ix
 
-def get_dist_matrix(x, metric = 'correlation'):
-    D = squareform(pdist(x, metric = 'correlation'))
+def tree_to_dist_mat(tree):
+    tree = tree.split_polytomies()
     
-    
+    n_nodes = len(list(tree.nodes()))
+        
+    node_ids = [u for u in tree.nodes()]
+    leaf_nodes = [u for u in tree.nodes() if tree.is_leaf(u)]
 
+    D = np.zeros((len(leaf_nodes), len(leaf_nodes)))
+
+    for i, j in itertools.combinations(range(len(leaf_nodes)), 2):
+        D[i, j] = tree.distance_between(i, j)
+        D[j, i] = D[i, j]
+
+    return D
+
+from io import BytesIO, StringIO
+from skbio.tree import TreeNode
+from skbio import read
+import copy
+import networkx as nx
+import itertools
+
+if __name__ == '__main__':
+    import tskit
+    
+    import matplotlib.pyplot as plt
+    import time
+    
+    ts = tskit.load('tree_1.trees')
+    tree = ts.first()
+    D = tree_to_dist_mat(tree)
+    
+    plt.imshow(D)
+    plt.show()

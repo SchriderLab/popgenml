@@ -199,13 +199,18 @@ from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
 
 class MSPrimeFWLoader(object):
-    def __init__(self, simulator, size = 128, batch_size = 32, method = 'true', cdf = None, n_per = 2, verbose = True):
+    def __init__(self, simulator, size = 128, batch_size = 32, method = 'true', 
+                     cdf = None, return_params = False, filter_data = True,
+                     minmax_sites = (890, 1110), verbose = True):
         self.method = method
         
         self.cdf = cdf
-        self.n_per = n_per
         self.method = method
         self.batch_size = batch_size
+        self.filter_data = filter_data
+        self.return_params = return_params
+        
+        self.min_sites, self.max_sites = minmax_sites
         
         self.size = size
         
@@ -225,21 +230,30 @@ class MSPrimeFWLoader(object):
                 
     def get_batch(self):
         X = []
+        co = []
+        
         for k in range(self.batch_size):
             _ = None
             while _ is None:
-                _ = self.get_replicate_()
-            X.extend(_)
+                _ = self.get_replicate_(True)
             
-        return torch.FloatTensor(np.array(X))
-    
+            x, c = _
+            
+            X.extend(x)
+            co.append(c)
+            
+        if self.return_params:
+            return torch.FloatTensor(np.array(X)), torch.FloatTensor(np.array(co))
+        else:
+            return torch.FloatTensor(np.array(X))
+        
     def plot_cdf(self, ofile = None, n_points = 128):
         x = np.linspace(np.min(self.cdf.x), np.max(self.cdf.x), n_points)
         
         plt.plot(x, self.cdf(x))
         plt.show()
     
-    def compute_cdf(self, n_samples = 1024, n_bins = 1024, n_samples_minmax = 512, verbose = False):
+    def compute_cdf(self, n_samples = 512, n_bins = 1024, n_samples_minmax = 512, verbose = False):
         mins = []
         maxs = []
         
@@ -299,12 +313,18 @@ class MSPrimeFWLoader(object):
         
     def get_W_(self, n_per = -1):
         ret = self.simulator.simulate_fw_single()
+        if self.filter_data:
+            while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
+                ret = self.simulator.simulate_fw_single()
         
         return ret['W']
                 
     def get_replicate_(self, return_params = False, params = None):
         ret = self.simulator.simulate_fw_single()
-            
+        if self.filter_data:
+            while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
+                ret = self.simulator.simulate_fw_single()
+        
         if ret is not None:
             F = ret['F']
             W = ret['W']
@@ -351,7 +371,10 @@ class MSPrimeFWLoader(object):
             
         X = np.array(X)
         
-        return X
+        if not return_params:
+            return X
+        else:
+            return X, self.simulator.co
         
     def get_median_replicate(self, sample):
         F, W, pop_mat, coal_times, Xmat, sites, ts = self.simulator.simulate_fw(sample = True)
