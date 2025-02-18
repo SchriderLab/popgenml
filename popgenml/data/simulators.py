@@ -389,6 +389,45 @@ class BaseMSPrimeSimulator(BaseSimulator):
         
         return result
     
+    def simulate_fw_sequential_pair(self, *args):
+        result = self.simulate(*args)
+        s = result['ts']
+    
+        sample_sizes = self.n_samples
+        
+        if self.ploidy == 2:
+            sample_sizes = [2 * u for u in sample_sizes]
+        
+        ii = np.random.choice(range(s.num_trees - 1))
+        
+        tree = s.at(ii)
+        
+        Fs = []
+        Ws = []
+        t_coals = []
+        
+        # convert tree to encoding
+        F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, (self.ploidy == 2))
+        
+        Fs.append(F)
+        Ws.append(W)
+        t_coals.append(t_coal)
+        
+        tree = s.at(ii + 1)
+        
+        # convert tree to encoding
+        F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, (self.ploidy == 2))
+        
+        Fs.append(F)
+        Ws.append(W)
+        t_coals.append(t_coal)
+        
+        result['F'] = Fs
+        result['W'] = Ws
+        result['t_coal'] = t_coals
+        
+        return result
+    
     def simulate_relate(self, *args):
         result = self.simulate(*args)
         s = result['ts']
@@ -402,93 +441,6 @@ class BaseMSPrimeSimulator(BaseSimulator):
         
         return result
     
-        Fs = []
-        Ws = []
-        pop_vectors = []
-        coal_times = []
-        
-        n_samples = sum(self.n_samples)
-     
-        if self.ploidy == 2:
-            n_samples = n_samples // 2
-        
-        temp_dir = tempfile.TemporaryDirectory()
-        temp_dir.name = 'temp'
-        
-        os.mkdir(temp_dir.name)
-        
-        odir = os.path.join(temp_dir.name, 'relate')
-        os.mkdir(odir)
-        
-        ms_file = os.path.join(temp_dir.name, 'sim.vcf')
-        s.write_vcf(sys.stdout)
-        
-        try:
-            f = open(os.path.join(temp_dir.name, 'sim.vcf'), 'w')
-            s.write_vcf(f)
-            f.close()
-        except:
-            return None
-        
-        tag = ms_file.split('/')[-1].split('.')[0]
-        cmd_ = self.rcmd.format('sim.haps', 'sim.sample', '../sim', odir)
-        os.system(cmd_)
-        
-        map_file = ms_file.replace('.vcf', '.map')
-        
-        ofile = open(map_file, 'w')
-        ofile.write('pos COMBINED_rate Genetic_Map\n')
-        ofile.write('0 {} 0\n'.format(self.r * self.L))
-        ofile.write('{0} {1} {2}\n'.format(self.L, self.r * self.L, self.r * 10**8))
-        ofile.close()
-        
-        haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))
-        samples = list(map(os.path.abspath, [u.replace('.haps', '.sample') for u in haps if os.path.exists(u.replace('.haps', '.sample'))]))
-        
-        # we need to rewrite the haps files (for haploid organisms)
-        for sample in samples:
-            f = open(sample, 'w')
-            f.write('ID_1 ID_2 missing\n')
-            f.write('0    0    0\n')
-            if self.ploidy == 2:
-                for k in range(n_samples):
-                    f.write('UNR{} UNR{} 0\n'.format(k + 1, k + 1))
-            else:
-                for k in range(n_samples):
-                    f.write('UNR{} NA 0\n'.format(k + 1))
-            
-        f.close()
-        
-        ofile = haps[0].split('/')[-1].replace('.haps', '') + '_' + map_file.split('/')[-1].replace('.map', '').replace(tag, '').replace('.', '')
-        if ofile[-1] == '_':
-            ofile = ofile[:-1]
-        
-
-        cmd_ = self.relate_cmd.format(self.mu, 2 * self.N, haps[0], 
-                                     samples[0], os.path.abspath(map_file), 
-                                     ofile, odir)
-        os.system(cmd_)
-        
-        try:
-            if len(self.n_samples) == 1:
-                _ = self.n_samples + [0]
-            else:
-                _ = self.n_samples
-            
-            anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-            Fs, Ws, snps, pop_vectors, coal_times = read_anc(anc_file, _)
-        except Exception as e:
-            print(e)
-            return None
-        
-        #temp_dir.cleanup()
-        
-        result['F'] = Fs
-        result['W'] = Ws
-        result['t_coal'] = coal_times
-        
-        return result
-        
     # returns FW image(s)
     def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.01):
         result = self.simulate(*args)

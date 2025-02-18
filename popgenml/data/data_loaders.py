@@ -318,7 +318,58 @@ class MSPrimeFWLoader(object):
                 ret = self.simulator.simulate_fw_single()
         
         return ret['W']
-                
+    
+    def get_delta_pair(self):
+        ret = self.simulator.simulate_fw_sequential_pair()
+        if self.filter_data:
+            while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
+                ret = self.simulator.simulate_fw_sequential_pair()
+        
+        Xs = []
+        for k in range(2):
+            X, _ = self.format_(ret['F'][k], ret['W'][k], None)
+            Xs.append(X)
+        
+        return torch.FloatTensor(np.array(Xs))
+    
+    def format_(self, F, W, pop_mat):
+        W = np.array(W)
+        F = np.array(F)
+        F /= np.max(F)
+        
+        W = np.log(W + 1e-12)
+
+        if self.cdf is not None:
+            W = np.clip(W, self.cdf.x[0], self.cdf.x[-1])
+            W = self.cdf(W)
+                            
+        i, j = np.triu_indices(self.f_size)
+        i_, j_ = np.tril_indices(self.f_size)
+        
+        X = []
+
+        d = W
+        f = F
+        
+        im = np.zeros((self.size, self.size) + (3, ))
+        
+        if pop_mat is None:
+            im[j_, i_,0] = f
+            im[i_, j_, 0] = f
+            im[j_, i_, 1] = d                
+            im[j_, i_, 2] = d ** 0.5
+        else:                
+            im[j_,i_,0] = f
+            im[i_,j_,0] = f
+            im[j_, i_, 1] = d                
+            im[:, :, 2] = (self.p_im.im(pop_mat) * 1.5 + 100) / 255
+        
+        X.append(im.transpose(2, 0, 1))
+            
+        X = np.array(X)
+        
+        return X, self.simulator.co
+                        
     def get_replicate_(self, return_params = False, params = None):
         ret = self.simulator.simulate_fw_single()
         if self.filter_data:
