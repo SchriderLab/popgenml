@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "popgenml"
+version = "0.0.1"
+authors = [
+  { name="Dylan Ray", email="ddray@email.unc.edu" },
+]
+description = "A package for simulating population genetic data and training and test inference tools."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
