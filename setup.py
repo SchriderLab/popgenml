@@ -6,6 +6,6 @@ setup(
     version='0.0.1',
     packages=find_packages(include = ['popgenml', 'popgenml/*']),
     package_data={
-        'my_package': ['data/*.csv', 'config.ini']
+        'my_package': ['src/*']
     },
 )
