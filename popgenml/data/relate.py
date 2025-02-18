@@ -2,7 +2,8 @@
 
 import os
 import tempfile
-from io_ import write_to_ms
+from popgenml.data.io_ import write_to_ms
+
 import time
 import copy
 import glob
