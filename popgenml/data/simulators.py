@@ -224,6 +224,13 @@ class BaseSimulator(object):
         self.r = r        
         self.n_samples = n_samples
 
+class MSModSimulator(object):
+    def __init__(self, prior = None, L = int(1e4), mu = 5.0e-9, n_samples = [64, 64]):
+        self.L = L
+        self.mu = mu
+        
+    
+
 """
 """
 class SlimSimulator(object):
@@ -231,7 +238,9 @@ class SlimSimulator(object):
     script (str): points to a slim script
     args (str): format string for slim command with args if needed
     """
-    def __init__(self, script, args = None, n_samples = 64, L = int(1e4)):
+    def __init__(self, script = 'src/simulations/slim/introg_bidirectional.slim', 
+                 args = "-d sampleSizePerSubpop={} -d donorPop={} -d st={} -d mt={} -d mp={} -d introS={}", 
+                 n_samples = 64, L = int(1e4)):
         self.script = script
         self.args = args
         self.n_samples = n_samples
@@ -315,12 +324,14 @@ class BaseMSPrimeSimulator(BaseSimulator):
         # get the current logging level
         logger = logging.getLogger(__name__)
         current_level = logger.getEffectiveLevel()
-        
+        logging.basicConfig(level = logging.ERROR)
+        """
         if not verbose:
             # to quiet down msprime
             logging.basicConfig(level = logging.ERROR, force = True)
         else:
             logging.basicConfig(level = logging.INFO, force = True)
+        """
         self.demography = self.make_demography()
         
         # simulate ancestry
@@ -334,7 +345,7 @@ class BaseMSPrimeSimulator(BaseSimulator):
         )
         
         # set the logging level back to what it was before the call to msprime
-        logging.basicConfig(level = current_level, force = True)
+        #logging.basicConfig(level = current_level, force = True)
         
         return self.mutate_and_return_(ts)
     
