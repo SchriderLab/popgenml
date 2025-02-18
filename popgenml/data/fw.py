@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from popgenml.data.relate import make_FW_rep
+
 import numpy as np
 from skbio.tree import TreeNode
 
@@ -7,7 +9,6 @@ import tskit
 import pickle
 from scipy.interpolate import interp1d
 import msprime
-from relate import make_FW_rep
 from io import BytesIO, StringIO
 
 import copy
