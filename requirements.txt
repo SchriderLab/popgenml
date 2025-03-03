@@ -1,0 +1,15 @@
+msprime
+tskit
+matplotlib
+pandas
+scikit-learn
+scikit-bio
+seriate
+protobuf==3.19.0
+numpy
+prettytable
+seaborn
+tqdm
+demesdraw
+newick
+jupyter
