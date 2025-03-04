@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from popgenml.data.fw import tree_to_fw
 
 from scipy.stats import beta
 from scipy.interpolate import interp1d
@@ -312,25 +313,21 @@ class MSPrimeFWLoader(object):
         self.cdf = interp1d(x[ii], y[ii])
         
     def get_W_(self, n_per = -1):
-        ret = self.simulator.simulate_fw_single()
+        ret = self.simulator.simulate()
         if self.filter_data:
             while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
-                ret = self.simulator.simulate_fw_single()
+                ret = self.simulator.simulate()
         
-        return ret['W']
-    
-    def get_delta_pair(self):
-        ret = self.simulator.simulate_fw_sequential_pair()
-        if self.filter_data:
-            while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
-                ret = self.simulator.simulate_fw_sequential_pair()
+        s = ret['ts']
         
-        Xs = []
-        for k in range(2):
-            X, _ = self.format_(ret['F'][k], ret['W'][k], None)
-            Xs.append(X)
+        ii = np.random.choice(range(s.num_trees))
         
-        return torch.FloatTensor(np.concatenate(Xs, axis = 0))
+        tree = s.at(ii)
+        
+        # convert tree to encoding
+        F, W, pop_vector, t_coal = tree_to_fw(tree, self.simulator.n_samples, (self.simulator.ploidy == 2))
+        
+        return W
     
     def format_(self, F, W, pop_mat):
         W = np.array(W)
@@ -370,11 +367,24 @@ class MSPrimeFWLoader(object):
         
         return X, self.simulator.co
                         
-    def get_replicate_(self, return_params = False, params = None):
-        ret = self.simulator.simulate_fw_single()
+    def get_replicate_(self, return_params = False):
+        ret = self.simulator.simulate()
         if self.filter_data:
             while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
-                ret = self.simulator.simulate_fw_single()
+                ret = self.simulator.simulate()
+                
+        s = ret['ts']
+        
+        ii = np.random.choice(range(s.num_trees))
+        
+        tree = s.at(ii)
+        
+        # convert tree to encoding
+        F, W, pop_vector, t_coal = tree_to_fw(tree, self.simulator.n_samples, (self.simulator.ploidy == 2))
+        
+        ret['F'] = F
+        ret['W'] = W
+        ret['t_coal'] = t_coal
         
         if ret is not None:
             F = ret['F']
@@ -425,7 +435,7 @@ class MSPrimeFWLoader(object):
         if not return_params:
             return X
         else:
-            return X, self.simulator.co
+            return X, self.simulator.co, ret
         
     def get_median_replicate(self, sample):
         F, W, pop_mat, coal_times, Xmat, sites, ts = self.simulator.simulate_fw(sample = True)

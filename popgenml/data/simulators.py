@@ -182,6 +182,24 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         self.pmf = rv.pmf(np.array(range(1, self.max_K), dtype = np.float32))
         self.pmf /= np.sum(self.pmf)
         
+    def get_N(self, co, eps):
+        p = Chebyshev(co)
+    
+        x = np.linspace(-1., 1., self. n_time_points)
+        # get the curve with range (-1, 1)
+        y = p(x)
+        
+        max_p = np.max(y)
+        min_p = np.min(y)
+        
+        y = ((y - min_p) / (max_p - min_p)) * 2 - 1
+        
+        N = y * eps + 1
+        
+        t = [0] + list(np.exp(np.linspace(0, 11, self.n_time_points - 1)))
+        
+        return t, N
+        
     def sample_curve(self):
         # sample the number of Cheby polynomials to include
         K = self.max_K - 1
