@@ -1,6 +1,6 @@
 import numpy as np
 
-from io_ import write_to_ms, load_ms
+from popgenml.data.io_ import write_to_ms, load_ms
 import sys
 
 from seriate import seriate
