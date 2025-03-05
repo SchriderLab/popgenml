@@ -230,8 +230,7 @@ def to_unique(X):
 """
 Fast seriation.  (find source)
 """
-def seriate_spectral(x):    
-    C = pairwise_distances(x)
+def seriate_spectral(x, C):    
     C[np.where(np.isnan(C))] = 0.
 
     C = np.diag(C.sum(axis = 1)) - C
