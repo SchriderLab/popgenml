@@ -2,6 +2,7 @@
 
 from torch import nn
 import torch
+from torch.nn.utils.rnn import pack_padded_sequence
 
 # a basic MLP module
 class MLP(nn.Module):
@@ -18,7 +19,7 @@ class MLP(nn.Module):
         return self.model(x.view(x.size(0), -1))
     
 class RNNEstimator(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_size = 128, global_shape = 84, num_layers = 1, dropout = 0.0):
+    def __init__(self, in_dim, out_dim, hidden_size = 128, global_shape = 84, n_heads = 5, num_layers = 1, dropout = 0.0):
         super().__init__()
         
         self.in_norm = nn.LayerNorm(in_dim)
@@ -29,7 +30,7 @@ class RNNEstimator(nn.Module):
         self.affine = nn.Linear(in_dim, in_dim)
         
         self.gru = nn.GRU(in_dim * 2, hidden_size, num_layers = num_layers, batch_first = True)
-        self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(in_dim, 3, dim_feedforward = hidden_size, batch_first = True, dropout = dropout), num_layers = 6)
+        self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(in_dim, n_heads, dim_feedforward = hidden_size, batch_first = True, dropout = dropout), num_layers = 6)
         
         self.out = nn.Sequential(*[nn.Linear(hidden_size, hidden_size), nn.BatchNorm1d(hidden_size), nn.LeakyReLU(), 
                                   nn.Linear(hidden_size, hidden_size), nn.BatchNorm1d(hidden_size), nn.LeakyReLU(),
@@ -37,10 +38,12 @@ class RNNEstimator(nn.Module):
                 
         self.drop = nn.Dropout(0.5)
         
-    def forward(self, x, drop = None):
+    def forward(self, x, ls, drop = None):
         x0 = self.encoder(x)
   
         x = torch.cat([x, x0], -1)
+  
+        x = pack_padded_sequence(x, ls, batch_first = True)
   
         x, h = self.gru(x)
         h = h[0]
