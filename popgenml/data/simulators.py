@@ -383,7 +383,7 @@ class BaseMSPrimeSimulator(BaseSimulator):
         
         result['x'] = X
         result['pos'] = sites
-        result['ts'] = ts
+        result['ts'] = mutated_ts
         
         return result
         

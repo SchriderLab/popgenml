@@ -367,15 +367,86 @@ class MSPrimeFWLoader(object):
         
         return X, self.simulator.co
                         
+    def get_sequence(self):
+        ret = self.simulator.simulate()
+        if self.filter_data:
+            while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
+                ret = self.simulator.simulate()
+                
+        s = ret['ts'].simplify(reduce_to_site_topology = True)
+        
+        tree = s.first()
+        X = []
+        
+        cond = True
+        
+        while cond:
+            # convert tree to encoding
+            F, W, pop_vector, t_coal = tree_to_fw(tree, self.simulator.n_samples, (self.simulator.ploidy == 2))
+            
+            ret['F'] = F
+            ret['W'] = W
+            ret['t_coal'] = t_coal
+            
+            if ret is not None:
+                F = ret['F']
+                W = ret['W']
+                
+                if 'pop' in ret.keys():
+                    pop_mat = ret['pop']
+                else:
+                    pop_mat = None
+            else:
+                return ret
+            
+            W = np.array(W)
+            F = np.array(F)
+            F /= np.max(F)
+            
+            W = np.log(W + 1e-12)
+
+            if self.cdf is not None:
+                W = np.clip(W, self.cdf.x[0], self.cdf.x[-1])
+                W = self.cdf(W)
+                                
+            i, j = np.triu_indices(self.f_size)
+            i_, j_ = np.tril_indices(self.f_size)
+            
+            d = W
+            f = F
+            
+            im = np.zeros((self.size, self.size) + (3, ))
+            
+            if pop_mat is None:
+                im[j_, i_,0] = f
+                im[i_, j_, 0] = f
+                im[j_, i_, 1] = d                
+                im[j_, i_, 2] = d ** 0.5
+            else:                
+                im[j_,i_,0] = f
+                im[i_,j_,0] = f
+                im[j_, i_, 1] = d                
+                im[:, :, 2] = (self.p_im.im(pop_mat) * 1.5 + 100) / 255
+            
+            X.append(im.transpose(2, 0, 1))
+            
+            cond = tree.next()
+        
+        X = np.array(X)
+        
+        return X
+    
     def get_replicate_(self, return_params = False):
         ret = self.simulator.simulate()
         if self.filter_data:
             while not ((ret['x'].shape[1] > self.min_sites) and (ret['x'].shape[1] < self.max_sites)):
                 ret = self.simulator.simulate()
                 
-        s = ret['ts']
+        s = ret['ts'].simplify(reduce_to_site_topology = True)
         
-        ii = np.random.choice(range(s.num_trees))
+        
+        n_sites = np.array([u.num_mutations for u in s.trees()])
+        ii = np.random.choice(range(s.num_trees), p = n_sites / np.sum(n_sites))
         
         tree = s.at(ii)
         
