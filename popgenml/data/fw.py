@@ -55,8 +55,10 @@ def tree_to_fw(tree, n_samples, diploid = False):
         pop_vector = np.array(populations)
     else:
         pop_vector = None
+    
     F, W, _, t_coal = make_FW_rep(root, sample_sizes)
     i, j = np.tril_indices(F.shape[0])
+
     F = F[i, j]
 
     return F, W, pop_vector, t_coal

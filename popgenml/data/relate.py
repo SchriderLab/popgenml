@@ -33,6 +33,9 @@ def make_FW_rep(root, sample_sizes):
     non_zero_ages = []
 
     ages = np.zeros(root.count())
+    print(ages.shape)
+    
+    
     for node in root.traverse():
         ages[node.id] = node.age
 
@@ -82,13 +85,13 @@ def make_FW_rep(root, sample_sizes):
 
     start_end_ = np.tile(start_end, (len(i), 1, 1))
     start = np.tile(s[j], (start_end.shape[0], 1)).T
-    end = np.tile(s[i], (start_end.shape[0], 1)).T
+    end = np.tile(s[i + 1], (start_end.shape[0], 1)).T
 
     _ = np.sum((start_end_[:,:,1] <= end) & (start_end_[:,:,0] >= start), axis = -1)
 
     F[i, j] = _
     F[j, i] = _
-
+    
     i, j = np.tril_indices(F.shape[0])
 
     W = s[j] - s[i + 1]
