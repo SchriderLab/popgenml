@@ -33,8 +33,6 @@ def make_FW_rep(root, sample_sizes):
     non_zero_ages = []
 
     ages = np.zeros(root.count())
-    print(ages.shape)
-    
     
     for node in root.traverse():
         ages[node.id] = node.age
