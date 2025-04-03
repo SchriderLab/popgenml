@@ -11,12 +11,12 @@ import numpy as np
 from skbio import read
 from skbio.tree import TreeNode
 
-RELATE_PATH = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
+RELATE_PATH = 'Relate'
 
 rscript_path = 'Rscript {}'.format(os.path.abspath('src/data/ms2haps.R'))
 rcmd = 'cd {3} && ' + rscript_path + ' {0} {1} {2}'
 
-relate_path = os.path.join(os.getcwd(), 'include/relate/bin/Relate')
+relate_path = os.path.join(os.getcwd(), 'Relate')
 relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
 
 def make_FW_rep(root, sample_sizes):
