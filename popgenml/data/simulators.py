@@ -240,63 +240,6 @@ class BaseSimulator(object):
         self.r = r        
         self.n_samples = n_samples
 
-class MSModSimulator(object):
-    def __init__(self, prior = None, L = int(1e4), mu = 5.0e-9, n_samples = [64, 64]):
-        self.L = L
-        self.mu = mu
-        
-    
-
-"""
-Experimental.  Class to simulate with SLiM and get Python natives.  
-"""
-class SlimSimulator(object):
-    """
-    script (str): points to a slim script
-    args (str): format string for slim command with args if needed
-    """
-    def __init__(self, script = os.path.join(resource_filename('popgenml', 'slim'), 'introg_bidirectional.slim'),
-                 args = "-d sampleSizePerSubpop={} -d donorPop={} -d st={} -d mt={}", 
-                 n_samples = 64, L = int(1e4)):
-        self.script = script
-        self.args = args
-        self.n_samples = n_samples
-        self.L = L
-        
-    def simulate(self, *args):
-        args = args + (self.script,)
-        
-        seed = random.randint(0, 2**32-1)
-        slim_cmd = "slim -seed {} -d physLen={} ".format(seed, self.L)
-
-        if self.args is not None:
-            slim_cmd += self.args.format(*args)
-            slim_cmd += " {}".format(self.script)    
-        else:
-            slim_cmd += "{}".format(self.script)
-
-        procOut = subprocess.Popen(
-            slim_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        output, err = procOut.communicate()
-                    
-        X, pos, y_ = read_slim(output, self.n_samples, self.L)
-        pos = np.array(pos)
-        X = np.array(X)
-        
-        y = np.zeros(X.shape)
-        
-        for ix, start_end in enumerate(y_):
-            if len(start_end) == 0:
-                continue
-            
-            for start,end in start_end:
-            
-                ii = np.where((pos >= start) & (pos <= end))[0]
-                
-                y[ix, ii] = 1.
-        
-        return X, pos, y
-
 """
 Class for simulating with msprime.
 
@@ -425,4 +368,54 @@ class StepStoneSimulator(BaseMSPrimeSimulator):
             demography.add_population_parameters_change(time=T, initial_size=N1)
             
         return demography    
+    
+"""
+Experimental.  Class to simulate with SLiM and get Python natives.  
+"""
+class SlimSimulator(object):
+    """
+    script (str): points to a slim script
+    args (str): format string for slim command with args if needed
+    """
+    def __init__(self, script = os.path.join(resource_filename('popgenml', 'slim'), 'introg_bidirectional.slim'),
+                 args = "-d sampleSizePerSubpop={} -d donorPop={} -d st={} -d mt={}", 
+                 n_samples = 64, L = int(1e4)):
+        self.script = script
+        self.args = args
+        self.n_samples = n_samples
+        self.L = L
+        
+    def simulate(self, *args):
+        args = args + (self.script,)
+        
+        seed = random.randint(0, 2**32-1)
+        slim_cmd = "slim -seed {} -d physLen={} ".format(seed, self.L)
+
+        if self.args is not None:
+            slim_cmd += self.args.format(*args)
+            slim_cmd += " {}".format(self.script)    
+        else:
+            slim_cmd += "{}".format(self.script)
+
+        procOut = subprocess.Popen(
+            slim_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output, err = procOut.communicate()
+                    
+        X, pos, y_ = read_slim(output, self.n_samples, self.L)
+        pos = np.array(pos)
+        X = np.array(X)
+        
+        y = np.zeros(X.shape)
+        
+        for ix, start_end in enumerate(y_):
+            if len(start_end) == 0:
+                continue
+            
+            for start,end in start_end:
+            
+                ii = np.where((pos >= start) & (pos <= end))[0]
+                
+                y[ix, ii] = 1.
+        
+        return X, pos, y
             
