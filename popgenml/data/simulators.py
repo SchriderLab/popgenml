@@ -23,8 +23,6 @@ import subprocess
 
 import matplotlib.pyplot as plt
 
-RSCRIPT_PATH = os.path.join(os.getcwd(), 'include/relate/bin/RelateFileFormats')
-
 import sys
 
 from numpy.polynomial.chebyshev import Chebyshev
@@ -162,11 +160,16 @@ class PiecewisePopSizePrior(object):
             return t, N
 
 """
+Class to generate population size histories of the form N(t) = (eps * f(t) + 1) * N where f(t) is a 
+random sum of Chebyshev polynomials scaled from -1 to 1 and eps is drawn from a uniform distribution from min_eps to max_eps.
+
+    N: The mean pop size in the formula for N(t)
+    max_K: The max order of polynomial in the sum
+    n_time_points: The number of time points from log(time) = 0 to max_log_time to sample the pop size function for the demography
 """
 class ChebyshevHistory(PiecewisePopSizePrior):
-    def __init__(self, N = 75000, max_K = 12, n_time_points = 128, max_eps = 0.9,
-                 min_eps = 0.05, K_dist = 'geom',
-                 params = {'mu' : 0.05}):
+    def __init__(self, N = 75000, max_K = 12, n_time_points = 128, min_eps = 0.05, max_eps = 0.9,
+                 max_log_time = 11):
         super().__init__(N)
         
         self.max_K = max_K
@@ -174,13 +177,7 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         self.max_eps = max_eps
         self.min_eps = min_eps
         
-        if K_dist == 'geom':
-            rv = geom(params['mu'])
-        elif K_dist == 'poisson':
-            rv = poisson(params['mu'])
-            
-        self.pmf = rv.pmf(np.array(range(1, self.max_K), dtype = np.float32))
-        self.pmf /= np.sum(self.pmf)
+        self.max_log_time = max_log_time
         
     def get_N(self, co, eps):
         p = Chebyshev(co)
@@ -196,7 +193,7 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         
         N = y * eps + 1
         
-        t = [0] + list(np.exp(np.linspace(0, 11, self.n_time_points - 1)))
+        t = [0] + list(np.exp(np.linspace(0, self.max_log_time, self.n_time_points - 1)))
         
         return t, N
         
@@ -225,12 +222,12 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         
         co = np.concatenate([np.array([eps]), np.pad(co, ((0, self.max_K - co.shape[0])))])
 
-        t = [0] + list(np.exp(np.linspace(0, 11, self.n_time_points - 1)))
+        t = [0] + list(np.exp(np.linspace(0, self.max_log_time, self.n_time_points - 1)))
 
         return t, N, co
     
 """
-Base class to define some the attributes common to the simulators in 'include'.  These are:
+Base class to define some the attributes common to the supported simulators.  These are:
     L (int): the length of the simulated chromosome in base pairs
     mu (float): the mutation rate
     r: (float): the recombination rate
@@ -251,6 +248,7 @@ class MSModSimulator(object):
     
 
 """
+Experimental.  Class to simulate with SLiM and get Python natives.  
 """
 class SlimSimulator(object):
     """
@@ -300,6 +298,12 @@ class SlimSimulator(object):
         return X, pos, y
 
 """
+Class for simulating with msprime.
+
+By subclassing this class and re-defining make_demography(), you can make custom simulators that draw from specified
+priors for parameters such as population growth rates, migration rates, etc.
+
+See StepStoneSimulator for an example.
 """        
 class BaseMSPrimeSimulator(BaseSimulator):
     # L is the size of the simulation in base pairs
@@ -311,8 +315,8 @@ class BaseMSPrimeSimulator(BaseSimulator):
     # r: recombination rate
     # whether or not diploid individuals are simulated (vs haploid)
     # the number of samples
-    def __init__(self, L = int(1e5), mu = 1.26e-8, r = 1.007e-8, ploidy = 1, 
-                 n_samples = [129], N = 75000):
+    def __init__(self, L = int(1e5), mu = 1.5e-8, r = 1.007e-8, ploidy = 1, 
+                 n_samples = [16], N = 75000):
         self.L = L
         self.mu = mu
         self.r = r
@@ -322,9 +326,6 @@ class BaseMSPrimeSimulator(BaseSimulator):
         
         self.sample_size = sum(n_samples)
 
-        self.rcmd = 'cd {3} && ' + RSCRIPT_PATH + ' --mode ConvertFromVcf --haps {0} --sample {1} -i {2}'
-        self.relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
-        
         self.co = None
         self.demography = None
         
@@ -386,118 +387,10 @@ class BaseMSPrimeSimulator(BaseSimulator):
         result['ts'] = mutated_ts
         
         return result
-        
-    def simulate_fw_single(self, *args):
-        result = self.simulate(*args)
-        s = result['ts']
-        
-        sample_sizes = self.n_samples
-        if self.ploidy == 2:
-            sample_sizes = [2 * u for u in sample_sizes]
-        
-        ii = np.random.choice(range(s.num_trees))
-        
-        tree = s.at(ii)
-        
-        # convert tree to encoding
-        F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, (self.ploidy == 2))
-        
-        result['F'] = F
-        result['W'] = W
-        result['t_coal'] = t_coal
-        
-        return result
-    
-    def simulate_fw_sequential_pair(self, *args):
-        result = self.simulate(*args)
-        s = result['ts']
-    
-        sample_sizes = self.n_samples
-        
-        if self.ploidy == 2:
-            sample_sizes = [2 * u for u in sample_sizes]
-        
-        ii = np.random.choice(range(s.num_trees - 1))
-        
-        tree = s.at(ii)
-        
-        Fs = []
-        Ws = []
-        t_coals = []
-        
-        # convert tree to encoding
-        F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, (self.ploidy == 2))
-        
-        Fs.append(F)
-        Ws.append(W)
-        t_coals.append(t_coal)
-        
-        tree = s.at(ii + 1)
-        
-        # convert tree to encoding
-        F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, (self.ploidy == 2))
-        
-        Fs.append(F)
-        Ws.append(W)
-        t_coals.append(t_coal)
-        
-        result['F'] = Fs
-        result['W'] = Ws
-        result['t_coal'] = t_coals
-        
-        return result
-    
-    def simulate_relate(self, *args):
-        result = self.simulate(*args)
-        s = result['ts']
-        
-        Fs, Ws, _, _, coal_times = relate(result['x'], result['pos'], sum(self.n_samples), self.mu, self.r, self.N, self.L, 
-                                          self.ploidy == 2)
-        
-        result['F'] = Fs
-        result['W'] = Ws
-        result['t_coal'] = coal_times
-        
-        return result
-    
-    # returns FW image(s)
-    def simulate_fw(self, *args, method = 'true', sample = False, sample_prob = 0.01):
-        result = self.simulate(*args)
-        s = result['ts']
-        
-        Fs = []
-        Ws = []
-        pop_vectors = []
-        coal_times = []
-        
-        tree = s.first()
-        ret = True
-        # should be an iteration here but need to be careful in general due to RAM
-        while ret:
-            if sample:
-                if np.random.uniform() > sample_prob:
-                    ret = tree.next()
-                    continue
-        
-            F, W, pop_vector, t_coal = tree_to_fw(tree, self.n_samples, self.ploidy == 2)
-            
-            Fs.append(F)
-            Ws.append(W)
-            if len(self.n_samples) > 1:
-                pop_vectors.append(pop_vector)
-            else:
-                pop_vectors.append(None)
-            coal_times.append(t_coal)
-            
-            ret = tree.next()
-                
-        result['F'] = Fs
-        result['W'] = Ws
-        result['pop'] = pop_vectors
-        result['t_coal'] = coal_times
-        
-        return result
-        
+
+"""
+Constant pop size simulator.
+"""  
 class SimpleCoal(BaseMSPrimeSimulator):
     def __init__(self, N = 75000, **kwargs):
         super().__init__(**kwargs)
