@@ -4,22 +4,6 @@ import numpy as np
 import os
 
 """
-need to test this...
-"""
-def find_files(idir, exts = ('.msOut.gz')):
-    matches = []
-    
-    if not os.path.isdir(idir):
-        return matches
-        
-    for root, dirnames, filenames in os.walk(idir):
-        filenames = [ f for f in filenames if os.path.splitext(f)[1] in exts ]
-        for filename in filenames:
-            matches.append(os.path.join(root, filename))
-            
-    return matches
-
-"""
 Appends a simulation (genotype matrix X, (n_samples, n_sites) and positions (0 to 1)) to a text file 
 in a way identical to how ms outputs simulations.
 """
@@ -76,13 +60,19 @@ def split(word):
 # returns a list of genotype matrices, introgressed allele matrices (if *.anc file is provided),
 # a list of position vectors, and a list of the parameters listed in the \\ line if any
 def load_ms(msFile, ancFile = None, n = None, flip_alleles = True):
-    msFile = gzip.open(msFile, 'r')
+    
+    if '.gz' in msFile:
+        msFile = gzip.open(msFile, 'r')
+        f = lambda u: u.decode('utf-8')
+    else:
+        msFile = open(msFile, 'r')
+        f = lambda u: u
 
     # no migration case
     if ancFile is not None:
         ancFile = gzip.open(ancFile, 'r')
 
-    ms_lines = [u.decode('utf-8') for u in msFile.readlines()]
+    ms_lines = [f(u) for u in msFile.readlines()]
     ms_lines = [u for u in ms_lines if (not '#' in u)]
 
     idx_list = [idx for idx, value in enumerate(ms_lines) if ('//' in value)] + [len(ms_lines)]
@@ -91,7 +81,7 @@ def load_ms(msFile, ancFile = None, n = None, flip_alleles = True):
     ms_chunks[-1] += ['\n']
 
     if ancFile is not None:
-        anc_lines = [u.decode('utf-8') for u in ancFile.readlines()]
+        anc_lines = [f(u) for u in ancFile.readlines()]
     else:
         anc_lines = None
         
@@ -160,6 +150,10 @@ def load_ms(msFile, ancFile = None, n = None, flip_alleles = True):
         params.append(params_)
         
     return X, Y, P, params
+
+#######
+## Stuff for SLiM...
+#######
 
 def parse_fixations(fixationLines):
     fixations = []
