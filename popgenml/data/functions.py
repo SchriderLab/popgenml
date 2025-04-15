@@ -9,6 +9,41 @@ from scipy.optimize import linear_sum_assignment
 
 from scipy.sparse.linalg import eigs
 from sklearn.metrics import pairwise_distances
+import networkx as nx
+
+"""
+Takes a TSKit tree and returns node times and edges.
+There are 2*n - 1 nodes in a binary tree with n sample nodes.
+
+Returns:
+    x: (2n - 1,) array of node times
+    edge_index: (2, 2n - 2) array of integers specifying the edges in the tree
+"""
+def tree_to_graph(tree, n = 200):
+    tree = tree.split_polytomies()
+    g = nx.DiGraph(tree.as_dict_of_dicts())
+        
+    for node in g.nodes():
+        if g.out_degree(node) == 1:
+            g.remove_node(node)
+            break
+    
+    # include the sample nodes as the first n nodes
+    sample_nodes = list(range(n))
+    internal_nodes = [u for u in g.nodes.keys() if u >= n]
+    
+    nodes = sample_nodes + internal_nodes
+    
+    X = []
+    for node in nodes:
+        
+        t = tree.time(node)
+        
+        X.append(t)
+        
+    edge_index = np.array(g.edges())
+    
+    return np.array(X), edge_index
 
 """
 Pads sequences to the same length.
@@ -26,9 +61,6 @@ def pad_sequences(sequences, max_length=None, padding_value=0):
         padded_sequences.append(padded_seq)
 
     return np.array(padded_sequences)
-
-
-        
 
 
 """
@@ -272,9 +304,9 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import time
     
-    ts = tskit.load('tree_1.trees')
+    ts = tskit.load('test.trees')
     tree = ts.first()
-    D = tree_to_dist_mat(tree)
+    x, edge_index = tree_to_graph(tree)
     
-    plt.imshow(D)
-    plt.show()
+
+    
