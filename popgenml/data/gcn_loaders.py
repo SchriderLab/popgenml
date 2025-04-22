@@ -6,10 +6,14 @@ import random
 
 from popgenml.data.functions import tree_to_graph
 
+from torch_geometric.data import Data, Batch, DataLoader
+import torch
+
 class MSPrimeTreeDirLoader(object):
-    def __init__(self, idir, n = 200, val_prop = 0.05):
+    def __init__(self, idir, n = 200, val_prop = 0.05, batch_size = 1):
         self.idir = idir
         self.n = n
+        self.batch_size = batch_size
         
         self.ifiles = glob.glob(os.path.join(self.idir, '*.trees'))
         random.shuffle(self.ifiles)
@@ -41,3 +45,24 @@ class MSPrimeTreeDirLoader(object):
             edge_index.append(e)
         
         return X, edge_index
+    
+    def get_batch(self):
+        X = []
+        indices = []
+        
+        for k in range(self.batch_size):
+            x, e = self.get_replicate()
+            
+            X.extend(x)
+            indices.extend(e)
+            
+        # use PyTorch Geometrics batch object to make one big graph
+        batch = Batch.from_data_list(
+            [
+                Data(x=torch.FloatTensor(X[k]), edge_index=indices[k])
+                for k in range(len(indices))
+            ]
+        )
+        
+        return batch
+    
