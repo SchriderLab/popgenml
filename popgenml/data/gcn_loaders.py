@@ -38,11 +38,15 @@ class MSPrimeTreeDirLoader(object):
         edge_index = []
         
         tree = ts.first()
-        while True:
+        ret = True
+        
+        while ret:
             x, e = tree_to_graph(tree, self.n)
         
             X.append(x)
             edge_index.append(e)
+        
+            ret = tree.next()
         
         return X, edge_index
     
@@ -65,4 +69,11 @@ class MSPrimeTreeDirLoader(object):
         )
         
         return batch
+    
+if __name__ == '__main__':
+    loader = MSPrimeTreeDirLoader('data/tree_pheno')
+    batch = loader.get_batch()
+    
+    print(batch.x.shape)
+    
     

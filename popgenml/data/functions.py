@@ -46,7 +46,7 @@ def tree_to_graph(tree, n = 200):
         t = tree.time(node)        
         X.append(t)
         
-    X = np.concatenate([np.array(X).reshape(-1, 1), mut_counts])
+    X = np.concatenate([np.array(X).reshape(-1, 1), mut_counts.reshape(-1, 1)], 1)
             
     edge_index = np.array(g.edges())
     
