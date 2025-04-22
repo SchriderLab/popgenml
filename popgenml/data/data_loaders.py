@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from popgenml.data.fw import tree_to_fw
+from popgenml.data.functions import tree_to_graph
 
 from scipy.stats import beta
 from scipy.interpolate import interp1d
@@ -198,6 +199,10 @@ class PriorSampler(object):
 
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
+        
+class MSPrimeDistLoader(object):
+    def __init__(self, simulator, cdf = None):
+        self.simulator = simulator
 
 class MSPrimeFWLoader(object):
     def __init__(self, simulator, size = 128, batch_size = 32, method = 'true', 
@@ -443,7 +448,6 @@ class MSPrimeFWLoader(object):
                 ret = self.simulator.simulate()
                 
         s = ret['ts'].simplify(reduce_to_site_topology = True)
-        
         
         n_sites = np.array([u.num_mutations for u in s.trees()])
         ii = np.random.choice(range(s.num_trees), p = n_sites / np.sum(n_sites))

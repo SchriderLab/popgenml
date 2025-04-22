@@ -23,6 +23,8 @@ def tree_to_graph(tree, n = 200):
     tree = tree.split_polytomies()
     g = nx.DiGraph(tree.as_dict_of_dicts())
         
+    mutations = list(tree.mutations())    
+    
     for node in g.nodes():
         if g.out_degree(node) == 1:
             g.remove_node(node)
@@ -34,13 +36,18 @@ def tree_to_graph(tree, n = 200):
     
     nodes = sample_nodes + internal_nodes
     
+    mut_counts = np.zeros((len(nodes),))
+    for mu in mutations:
+        ii = nodes.index(mu.node)
+        mut_counts[ii] += 1
+
     X = []
     for node in nodes:
-        
-        t = tree.time(node)
-        
+        t = tree.time(node)        
         X.append(t)
         
+    X = np.concatenate([np.array(X).reshape(-1, 1), mut_counts])
+            
     edge_index = np.array(g.edges())
     
     return np.array(X), edge_index

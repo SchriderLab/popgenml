@@ -10,13 +10,13 @@ import glob
 import numpy as np
 from skbio import read
 from skbio.tree import TreeNode
+from pkg_resources import resource_filename
 
 RELATE_PATH = 'Relate'
+rscript_path = 'Rscript {}'.format(os.path.join(resource_filename('popgenml', 'scripts'), 'ms2haps.R'
+                                                ))
 
-rscript_path = 'Rscript {}'.format(os.path.abspath('src/data/ms2haps.R'))
 rcmd = 'cd {3} && ' + rscript_path + ' {0} {1} {2}'
-
-relate_path = os.path.join(os.getcwd(), 'Relate')
 relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
 
 def make_FW_rep(root, sample_sizes):
@@ -218,7 +218,7 @@ def parse_line(line, s0, s1):
 
     return root, start_snp, X, edges, pop_vector
 
-def read_anc(anc_file, pop_sizes = (40,0)):
+def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
     s0, s1 = pop_sizes
     sample_sizes = [u for u in pop_sizes if u != 0]
     
@@ -232,43 +232,38 @@ def read_anc(anc_file, pop_sizes = (40,0)):
         line = anc_file.readline()
         if line.decode('utf-8') == '':
             break
-    
-    current_day_nodes = list(range(sum(pop_sizes)))
         
     lines = []            
     while '(' in line:
         lines.append(line)
         line = anc_file.readline()
         
-    try:
-        iix = int(line.replace('\n', '').split()[-1]) - 1
-    except:
-        iix = 0
-    
+    X = []
+    edge_indices = []
     
     Fs = []
     Ws = []
-    coal_times = []
     
     pop_vectors = []
-    
-    t0 = time.time()
-    
+        
     snps = []
     for ij in range(len(lines)):
         line = lines[ij]
-        root, snp, _, _, pop_vector = parse_line(line, s0, s1)
+        root, snp, x, edges, pop_vector = parse_line(line, s0, s1)
         
         snps.append(snp)
         
-        F, W, _, t_coal = make_FW_rep(root, sample_sizes)
-        coal_times.append(t_coal)
+        X.append(x)
+        edge_indices.append(edges)
         
-        i, j = np.tril_indices(F.shape[0])
-        F = F[i, j]
-        
-        Fs.append(F)
-        Ws.append(W)
+        if return_fw:
+            F, W, _, t_coal = make_FW_rep(root, sample_sizes)
+            
+            i, j = np.tril_indices(F.shape[0])
+            F = F[i, j]
+            
+            Fs.append(F)
+            Ws.append(W)
         
         if pop_vector is not None:
             pop_vectors.append(pop_vector)
@@ -277,11 +272,18 @@ def read_anc(anc_file, pop_sizes = (40,0)):
     Ws = np.array(Ws)
     
     anc_file.close()
-    
-    return Fs, Ws, snps, pop_vectors, np.array(coal_times)
+
+    if not return_fw:    
+        return X, edge_indices, snps, pop_vectors
+    else:
+        return X, edge_indices, snps, pop_vectors, Fs, Ws
 
 """
+Function for running Relate on a genotype matrix.
 
+X: ndarray (n_samples, n_sites)
+sites: ndarray (n_samples, ) 0 - 1 encoded snp positions on the chromosome
+n_samples: 
 """
 def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
            return_graph = False):
@@ -343,8 +345,8 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
     os.system(cmd_)
     
     anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-    Fs, Ws, snps, _, coal_times = read_anc(anc_file, pop_sizes = (n_samples, 0))
+    X, edge_indices, snps, pop_vectors = read_anc(anc_file, pop_sizes = (n_samples, 0))
     
     temp_dir.cleanup()
 
-    return Fs, Ws, snps, np.array(sites), coal_times
+    return X, edge_indices, snps, pop_vectors

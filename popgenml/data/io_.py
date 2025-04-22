@@ -59,8 +59,7 @@ def split(word):
 # takes a gzipped ms file
 # returns a list of genotype matrices, introgressed allele matrices (if *.anc file is provided),
 # a list of position vectors, and a list of the parameters listed in the \\ line if any
-def load_ms(msFile, ancFile = None, n = None, flip_alleles = True):
-    
+def load_ms(msFile, ancFile = None, n = None, flip_alleles = False):
     if '.gz' in msFile:
         msFile = gzip.open(msFile, 'r')
         f = lambda u: u.decode('utf-8')
@@ -154,7 +153,6 @@ def load_ms(msFile, ancFile = None, n = None, flip_alleles = True):
 #######
 ## Stuff for SLiM...
 #######
-
 def parse_fixations(fixationLines):
     fixations = []
     mode = 0
