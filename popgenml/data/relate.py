@@ -216,7 +216,7 @@ def parse_line(line, s0, s1):
     X = np.array(X)
     edges = edges[:X.shape[0]]
 
-    return root, start_snp, X, edges, pop_vector
+    return root, start_snp, X, edges, pop_vector, lengths
 
 def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
     s0, s1 = pop_sizes
@@ -244,12 +244,16 @@ def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
     Fs = []
     Ws = []
     
+    branch_lengths = []
+    
     pop_vectors = []
         
     snps = []
     for ij in range(len(lines)):
         line = lines[ij]
-        root, snp, x, edges, pop_vector = parse_line(line, s0, s1)
+        root, snp, x, edges, pop_vector, lengths = parse_line(line, s0, s1)
+        
+        branch_lengths.append(lengths)
         
         snps.append(snp)
         
@@ -274,7 +278,7 @@ def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
     anc_file.close()
 
     if not return_fw:    
-        return X, edge_indices, snps, pop_vectors
+        return X, edge_indices, snps, branch_lengths, pop_vectors
     else:
         return X, edge_indices, snps, pop_vectors, Fs, Ws
 
