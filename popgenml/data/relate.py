@@ -349,8 +349,8 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
     os.system(cmd_)
     
     anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-    X, edge_indices, snps, pop_vectors = read_anc(anc_file, pop_sizes = (n_samples, 0))
+    X, edge_indices, snps, branch_lengths, pop_vectors = read_anc(anc_file, pop_sizes = (n_samples, 0))
     
     temp_dir.cleanup()
 
-    return X, edge_indices, snps, pop_vectors
+    return X, edge_indices, snps, branch_lengths, pop_vectors
