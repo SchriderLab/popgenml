@@ -22,11 +22,8 @@ relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode All -m {0} -N {1} --haps {2} 
 def make_FW_rep(root, sample_sizes):
     if len(sample_sizes) > 1:
         topo_tips = [u for u in root.postorder() if u.is_tip()]
-        topo_ids = [u.id for u in topo_tips]
     
         pop_vector = [u.pop for u in topo_tips]
-        
-        
     else:
         pop_vector = None
 
@@ -218,7 +215,7 @@ def parse_line(line, s0, s1):
 
     return root, start_snp, X, edges, pop_vector, lengths
 
-def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
+def read_anc(anc_file, pop_sizes = (40,0)):
     s0, s1 = pop_sizes
     sample_sizes = [u for u in pop_sizes if u != 0]
     
@@ -245,8 +242,6 @@ def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
     Ws = []
     
     branch_lengths = []
-    
-    pop_vectors = []
         
     snps = []
     for ij in range(len(lines)):
@@ -259,35 +254,35 @@ def read_anc(anc_file, pop_sizes = (40,0), return_fw = False):
         
         X.append(x)
         edge_indices.append(edges)
-        
-        if return_fw:
-            F, W, _, t_coal = make_FW_rep(root, sample_sizes)
-            
-            i, j = np.tril_indices(F.shape[0])
-            F = F[i, j]
-            
-            Fs.append(F)
-            Ws.append(W)
-        
-        if pop_vector is not None:
-            pop_vectors.append(pop_vector)
             
     Fs = np.array(Fs)
     Ws = np.array(Ws)
     
     anc_file.close()
 
-    if not return_fw:    
-        return X, edge_indices, snps, branch_lengths, pop_vectors
-    else:
-        return X, edge_indices, snps, pop_vectors, Fs, Ws
-
+    return X, edge_indices, snps, branch_lengths
+    
 """
 Function for running Relate on a genotype matrix.
 
-X: ndarray (n_samples, n_sites)
-sites: ndarray (n_samples, ) 0 - 1 encoded snp positions on the chromosome
-n_samples: 
+takes:
+    X: ndarray (n_samples, n_sites)
+    sites: ndarray (n_samples, ) 0 - 1 encoded snp positions on the chromosome
+    n_samples: (int) number of samples
+    mu: (float) mutation rate
+    r: (float) recombination rate
+    N: (float) effective population size
+    L: (int) chrom size in base pairs
+    diploid: (bool) default = False;
+    verbose: (bool) default = False; whether to display output from the executed Relate command
+    
+returns:
+    X: list of ndarray (n_samples * 2 - 1, 4) node features including the nodes age (zero if a sample node), a 2-vector indicating whether the node is ancestral or present day, and the
+        number of mutations on the branch to the nodes parent. there are node features and edges for each tree in the tree sequence predicted by Relate
+    edge_indices: list of ndarray (2, 2 * n_samples - 2) edge list for each tree
+    snps: the starting snp of each tree
+    branch_lengths: the branch lengths for the tree or the time between coalescent events
+    pop_vectors: the population labels
 """
 def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
            return_graph = False):
@@ -349,8 +344,8 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
     os.system(cmd_)
     
     anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-    X, edge_indices, snps, branch_lengths, pop_vectors = read_anc(anc_file, pop_sizes = (n_samples, 0))
+    X, edge_indices, snps, branch_lengths = read_anc(anc_file, pop_sizes = (n_samples, 0))
     
     temp_dir.cleanup()
 
-    return X, edge_indices, snps, branch_lengths, pop_vectors
+    return X, edge_indices, snps, branch_lengths

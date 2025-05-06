@@ -2,6 +2,8 @@
 
 import allel
 import numpy as np
+
+#####
 # functions to take in (n, sites) binary haplotype array and positional array (sites,) and output a statistic
 
 # pos here are integers
