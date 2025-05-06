@@ -19,7 +19,7 @@ class MLP(nn.Module):
         return self.model(x.view(x.size(0), -1))
     
 class RNNEstimator(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_size = 128, global_shape = 84, n_heads = 5, num_layers = 1, dropout = 0.0):
+    def __init__(self, in_dim, out_dim, hidden_size = 128, global_shape = 84, n_heads = 5, num_layers = 6, dropout = 0.0):
         super().__init__()
         
         self.in_norm = nn.LayerNorm(in_dim)
@@ -30,7 +30,7 @@ class RNNEstimator(nn.Module):
         self.affine = nn.Linear(in_dim, in_dim)
         
         self.gru = nn.GRU(in_dim * 2, hidden_size, num_layers = num_layers, batch_first = True)
-        self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(in_dim, n_heads, dim_feedforward = hidden_size, batch_first = True, dropout = dropout), num_layers = 6)
+        self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(in_dim, n_heads, dim_feedforward = hidden_size, batch_first = True, dropout = dropout), num_layers = num_layers)
         
         self.out = nn.Sequential(*[nn.Linear(hidden_size, hidden_size), nn.BatchNorm1d(hidden_size), nn.LeakyReLU(), 
                                   nn.Linear(hidden_size, hidden_size), nn.BatchNorm1d(hidden_size), nn.LeakyReLU(),
