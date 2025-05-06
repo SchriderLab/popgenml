@@ -772,8 +772,8 @@ class Res1dBlock(nn.Module):
         
     
 class GATSeqClassifier(nn.Module):
-    def __init__(self, n_nodes, n_classes = 3, in_dim = 6, info_dim = 12, global_dim = 37, global_embedding_dim = 128, gcn_dim = 26, n_gcn_layers = 4, gcn_dropout = 0.,
-                             num_gru_layers = 2, hidden_size = 256, L = 32, n_heads = 1, n_gcn_iter = 6,
+    def __init__(self, n_classes = 3, in_dim = 4, info_dim = 12, global_dim = 37, global_embedding_dim = 128, gcn_dim = 26, n_gcn_layers = 4, gcn_dropout = 0.,
+                             num_gru_layers = 2, hidden_size = 512, L = 32, n_heads = 1, n_gcn_iter = 6,
                              use_conv = False, conv_k = 5, conv_dim = 4, momenta_gamma = 0.8, skip_info = False, skip_global = False, skip_gcn = False): 
         super(GATSeqClassifier, self).__init__()
 
@@ -784,8 +784,6 @@ class GATSeqClassifier(nn.Module):
         self.skip_info = skip_info
         self.skip_global = skip_global
         self.skip_gcn = skip_gcn
-        
-        self.n_nodes = n_nodes
         
         self.n_gcn_iter = n_gcn_iter
         
@@ -857,7 +855,7 @@ class GATSeqClassifier(nn.Module):
         
 
         
-    def forward(self, x0, edge_index, batch, x1, x2):
+    def forward(self, x0, edge_index, batch, x1, x2, return_features = False):
         #n_batch = x0.shape[0] // self.L // self.n_nodes
         n_batch = x1.shape[0]
         
@@ -891,4 +889,7 @@ class GATSeqClassifier(nn.Module):
             x2 = self.relu(self.global_embedding_norm(self.global_embedding(x2)))
             h = torch.cat([h, x2], dim = 1)
         
-        return self.out(h)
+        if return_features:
+            return h
+        else:
+            return self.out(h)
