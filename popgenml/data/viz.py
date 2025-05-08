@@ -12,7 +12,7 @@ def plot_demography(demography, log_time = True):
     plt.show()
     
 """
-Plots piecewise constant size history. Must call plt.show() or plt.savefig() after one more calls.
+Plots piecewise constant size history. Must call plt.show() or plt.savefig() after one or more calls.
 """
 def plot_size_history(Nt, max_t = None, color = 'k'):
     N = [u[0] for u in Nt]

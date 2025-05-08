@@ -10,10 +10,11 @@ from scipy.optimize import linear_sum_assignment
 from scipy.sparse.linalg import eigs
 from sklearn.metrics import pairwise_distances
 import networkx as nx
+from scipy.cluster.hierarchy import linkage
 
 """
 Takes a TSKit tree and returns node times and edges.
-There are 2*n - 1 nodes in a binary tree with n sample nodes.
+There are 2*n - 1 nodes in a binary tree with n sample nodes (n haploid chromosomes).
 
 Returns:
     x: (2n - 1,) array of node times
@@ -32,9 +33,12 @@ def tree_to_graph(tree, n = 200):
     
     # include the sample nodes as the first n nodes
     sample_nodes = list(range(n))
-    internal_nodes = [u for u in g.nodes.keys() if u >= n]
+    internal_nodes = sorted([u for u in g.nodes.keys() if u >= n], key = lambda u: tree.time(u))
+    
+    to = sample_nodes + list(range(n, 2*n - 1))
     
     nodes = sample_nodes + internal_nodes
+    g = nx.relabel_nodes(g, dict(zip(nodes, to)))
     
     mut_counts = np.zeros((len(nodes),))
     for mu in mutations:
@@ -52,6 +56,88 @@ def tree_to_graph(tree, n = 200):
     
     return np.array(X), edge_index
 
+import tskit
+
+"""
+Converts edge and node features (assumed to have node ages in the first column) into a TSKit tree
+"""
+def graph_to_tree(x, edges):
+    n_nodes = (x.shape[0] + 1) // 2
+    
+    x_ = x[:,0]
+    x_ = x_[x_ != 0.]
+    t_coal = np.sort(x_)
+
+    tables = tskit.TableCollection(sequence_length = 1000)
+    node_table = tables.nodes  # set up an alias, for efficiency
+    for k in range(n_nodes):
+        node_table.add_row(flags = tskit.NODE_IS_SAMPLE, population = 0, individual = k, time = 0.)
+        
+    for k in range(n_nodes, n_nodes * 2 - 1):
+        node_table.add_row(flags = 0, population = 0, individual = -1, time = t_coal[k - n_nodes])
+        
+    edge_table = tables.edges
+    individuals = tables.individuals
+    pops = tables.populations
+    
+    for k in range(n_nodes):
+        individuals.add_row(flags = 0)
+    
+    pops.add_row(metadata = b"{'description': '', 'name': 'pop_000'}")
+
+    for e0, e1 in edges:
+        edge_table.add_row(left = 0., right = 1000., parent = e0, child = e1)
+    
+    tables.sort()
+    ts_tree = tables.tree_sequence().first()
+    
+    return ts_tree
+
+"""
+Takes an array as input (1-D condensed distance matrix or 2-D array of observations) and returns a TSKit tree
+resulting from a hierarchichal clustering.
+"""
+def distmat_to_tree(D, metric = 'euclidean'):
+    edges = []
+    Z = linkage(D, metric = metric)
+    
+    n = squareform(D).shape[0]
+    print(n)
+    
+    # parents
+    ii = np.array(range(n, 2 * n - 1)).reshape(-1, 1)
+    
+    edges.extend(np.concatenate([ii, Z[:,0].reshape(-1, 1)], 1).astype(np.int32))
+    edges.extend(np.concatenate([ii, Z[:,1].reshape(-1, 1)], 1).astype(np.int32))
+        
+    x = np.zeros((n, 1))
+    x = np.concatenate([x, np.expand_dims(Z[:,-2], -1) / 2.])
+    
+    # we use the distance divided by 2 as the branch length 
+    return graph_to_tree(x, edges)
+
+"""
+Converts tree into a condensed genealogical distance matrix (slow version, to be replaced)
+Condensed meaning the flattened version of the upper triangular entries (non-redundant)
+"""
+def tree_to_distmat(tree):
+    tree = tree.split_polytomies()
+    
+    n_nodes = len(list(tree.nodes()))
+        
+    node_ids = [u for u in tree.nodes()]
+    leaf_nodes = [u for u in tree.nodes() if tree.is_leaf(u)]
+
+    leaf_nodes = sorted(leaf_nodes)
+    D = np.zeros((len(leaf_nodes), len(leaf_nodes)))
+
+    for i, j in itertools.combinations(range(len(leaf_nodes)), 2):
+        D[i, j] = tree.distance_between(i, j)
+        D[j, i] = D[i, j]
+        
+    # condense the matrix and return
+    return squareform(D)
+    
 """
 Pads sequences to the same length.
 Takes list of 2d arrays [(n_sites, n_samples)] and pads to the max length and returns (b, max_sites, n_samples)
@@ -222,6 +308,10 @@ def format_matrix(x, pos, pop_sizes, y = None,
         
     return x, pos, y
 
+"""
+Converts a genotype matrix (n_samples, n_sites) to a unique site histogram where each row of the resulting array
+is a unique column of the input and the last column of the array is the proportion of the data made up by that site.
+"""
 def to_unique(X):
     site_hist = dict()
     
@@ -231,11 +321,9 @@ def to_unique(X):
     indices = []
     for k in range(X.shape[1]):
         x = X[:,k]
-        #h = hashFor(x)
         h = ''.join(x.astype(str))
         if h in site_hist.keys():
             site_hist[h] += 1
-            
         else:
             site_hist[h] = 1
             ii[h] = ix
@@ -282,21 +370,7 @@ def seriate_spectral(x, C):
     
     return x, ix
 
-def tree_to_dist_mat(tree):
-    tree = tree.split_polytomies()
-    
-    n_nodes = len(list(tree.nodes()))
-        
-    node_ids = [u for u in tree.nodes()]
-    leaf_nodes = [u for u in tree.nodes() if tree.is_leaf(u)]
 
-    D = np.zeros((len(leaf_nodes), len(leaf_nodes)))
-
-    for i, j in itertools.combinations(range(len(leaf_nodes)), 2):
-        D[i, j] = tree.distance_between(i, j)
-        D[j, i] = D[i, j]
-
-    return D
 
 from io import BytesIO, StringIO
 from skbio.tree import TreeNode
