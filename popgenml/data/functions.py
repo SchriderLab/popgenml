@@ -102,7 +102,6 @@ def distmat_to_tree(D, metric = 'euclidean'):
     Z = linkage(D, metric = metric)
     
     n = squareform(D).shape[0]
-    print(n)
     
     # parents
     ii = np.array(range(n, 2 * n - 1)).reshape(-1, 1)
