@@ -18,7 +18,9 @@ have had recent admixture.  popgenml hopes to streamline experiments around the 
     - Pre-built torch models
     - Training tools and visualization
 
-## msprime
+## Simulation
+
+### msprime
 
 popgenml features a class named ```popgenml.data.simulators.BaseMSPrimeSimulator``` which is meant to be subclassed to create a desired prior over demographies i.e. demographic parameters 
 such as effective population size etc.
@@ -87,3 +89,7 @@ In population genetic simulations we often save alignments for a sample of indiv
 ![image](https://github.com/SchriderLab/popgenml/blob/devel/docs/images/pogenml_intro_fig1.png)
 
 Each choice implies a set of architectures or models that can take it as input, and different choices may be better suited for different inference problems.  For instance, if we were to use inferred trees as a list of graphs (with node features and edges) as our input, then we can use graph convolution (https://en.wikipedia.org/wiki/Graph_neural_network) as part of our model, whereas an alignment matrix is suited for traditional 1d or 2d convolution.  
+
+### Sorting of alignment matrices
+
+We include two functions meant to "sort" individuals such that genetically similar individuals are near each other in the ordering.  
