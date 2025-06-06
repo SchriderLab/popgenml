@@ -84,6 +84,6 @@ Like in many applications of machine learning, your choice of how to represent a
 
 In population genetic simulations we often save alignments for a sample of individuals over some region of their genome.  We can make various choices about how we represent the alignment and what if any post-processing steps such as sorting of individuals or tree sequence inference.  For instance we could choose for input to our model the alignment itself, inferred tree sequences as a sequence of graphs, or a site frequence spectrum:
 
-
+![image](https://github.com/SchriderLab/popgenml/blob/devel/docs/images/pogenml_intro_fig1.png)
 
 Each choice implies a set of architectures or models that can take it as input, and different choices may be better suited for different inference problems.
