@@ -6,7 +6,7 @@ setup(
     version='0.0.1',
     packages=find_packages(),
     package_data={
-        'popgenml': ['slim/*']
+        'popgenml': ['slim/*', 'scripts/*']
     },
     include_package_data=True,
 )
