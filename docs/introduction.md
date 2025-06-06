@@ -76,4 +76,14 @@ class SimpleCoal(BaseMSPrimeSimulator):
 This creates a simple demography with a constant effective population size and will simulate it using msprime's default Hudson coalescent model.  Because we did not overwrite any of the default parameters defined in ```BaseMSPrimeSimulator```, 
 they remain the same for this custom subclass and the resulting simulation will be over 1e5 base pairs and will sample 16 haploid individuals in the present day.  
 
+## Formatting data from simulation replicates
 
+Like in many applications of machine learning, your choice of how to represent a replicate in your training set and what information to discard etc. can drastically affect the performance obtained.  For instance, if we were working with 3D objects as input to some model we might try to represent them as point clouds (a list of coordinates), as meshes (points with graph connectivity), or as a binary 3d grid (voxels):
+
+![image](https://miro.medium.com/v2/resize:fit:1158/1*n4uKWdVBwQGlB77Y3hsTPQ.png)
+
+In population genetic simulations we often save alignments for a sample of individuals over some region of their genome.  We can make various choices about how we represent the alignment and what if any post-processing steps such as sorting of individuals or tree sequence inference.  For instance we could choose for input to our model the alignment itself, inferred tree sequences as a sequence of graphs, or a site frequence spectrum:
+
+
+
+Each choice implies a set of architectures or models that can take it as input, and different choices may be better suited for different inference problems.
