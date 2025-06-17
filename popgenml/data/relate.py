@@ -180,9 +180,13 @@ def parse_line(line, s0, s1):
             branch_l = c.length
             
             p = c.parent
+            
             if p is not None:
             
+                    
                 p = int(c.parent.name)
+                if p < 0:
+                    continue
                 
                 if p not in data.keys():
                     d = np.zeros(data[c_].shape)
@@ -198,7 +202,7 @@ def parse_line(line, s0, s1):
                 
                     _.append(c.parent)
             
-                edges.append((c_, p))
+                edges.append((p, c_))
                
         T_present = copy.copy(_)
         

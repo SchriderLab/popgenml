@@ -89,7 +89,7 @@ def graph_to_tree(x, edges):
         edge_table.add_row(left = 0., right = 1000., parent = e0, child = e1)
     
     tables.sort()
-    ts_tree = tables.tree_sequence().first()
+    ts_tree = tables.tree_sequence().first(sample_lists = True)
     
     return ts_tree
 
