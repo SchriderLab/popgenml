@@ -266,30 +266,45 @@ def read_anc(anc_file, pop_sizes = (40,0)):
 
     return X, edge_indices, snps, branch_lengths
     
-"""
-Function for running Relate on a genotype matrix.
-
-takes:
-    X: ndarray (n_samples, n_sites)
-    sites: ndarray (n_samples, ) 0 - 1 encoded snp positions on the chromosome
-    n_samples: (int) number of samples
-    mu: (float) mutation rate
-    r: (float) recombination rate
-    N: (float) effective population size
-    L: (int) chrom size in base pairs
-    diploid: (bool) default = False;
-    verbose: (bool) default = False; whether to display output from the executed Relate command
-    
-returns:
-    X: list of ndarray (n_samples * 2 - 1, 4) node features including the nodes age (zero if a sample node), a 2-vector indicating whether the node is ancestral or present day, and the
-        number of mutations on the branch to the nodes parent. there are node features and edges for each tree in the tree sequence predicted by Relate
-    edge_indices: list of ndarray (2, 2 * n_samples - 2) edge list for each tree
-    snps: the starting snp of each tree
-    branch_lengths: the branch lengths for the tree or the time between coalescent events
-    pop_vectors: the population labels
-"""
 def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
            return_graph = False):
+    """
+    Run RELATE (a genealogy-based inference method) on simulated or empirical binary haplotype data.
+
+    This function writes the input data in `ms` format, constructs a genetic map, executes the RELATE
+    command-line pipeline, and parses the output to return coalescent statistics.
+
+    Parameters:
+        X (np.ndarray): Binary haplotype array of shape (n_individuals, n_sites).
+        sites (array-like): Array of genomic positions (length = n_sites).
+        n_samples (int): Number of haploid samples (individuals * 2 for diploids).
+        mu (float): Mutation rate per base pair.
+        r (float): Recombination rate per base pair.
+        N (int): Effective population size.
+        L (int): Total sequence length in base pairs.
+        diploid (bool, optional): Whether the input samples are diploid (default is False).
+        verbose (bool, optional): Whether to print RELATE's output to the terminal (default is False).
+        return_graph (bool, optional): Placeholder (not currently used) for returning inferred ARG.
+
+    Returns:
+        tuple:
+            Fs (np.ndarray): Tree sequence statistics (e.g., branch lengths or features from `.anc` file).
+            Ws (np.ndarray): Inferred weights or local ancestries.
+            snps (np.ndarray): SNP data extracted from the RELATE output.
+            sites (np.ndarray): Positions corresponding to SNPs, copied from input.
+            coal_times (np.ndarray): Inferred coalescent times from ancestral trees.
+
+    Notes:
+        - This function creates and cleans up a temporary directory to run RELATE.
+        - Assumes RELATE and helper binaries (`relate_cmd`, etc.) are properly configured and in scope.
+        - Input data is written in ms-format; RELATE’s `.haps` and `.sample` files are auto-generated.
+        - Genomic map is generated with a constant recombination rate.
+
+    Requires:
+        - External RELATE binary and pre-configured command templates: `rcmd`, `relate_cmd`.
+        - Supporting functions: `write_to_ms`, `read_anc`.
+
+    """
     temp_dir = tempfile.TemporaryDirectory()
     
     odir = os.path.join(temp_dir.name, 'relate')
