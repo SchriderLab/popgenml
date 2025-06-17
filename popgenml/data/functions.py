@@ -11,16 +11,26 @@ from scipy.sparse.linalg import eigs
 from sklearn.metrics import pairwise_distances
 import networkx as nx
 from scipy.cluster.hierarchy import linkage
+import itertools
+import tskit
 
-"""
-Takes a TSKit tree and returns node times and edges.
-There are 2*n - 1 nodes in a binary tree with n sample nodes (n haploid chromosomes).
-
-Returns:
-    x: (2n - 1,) array of node times
-    edge_index: (2, 2n - 2) array of integers specifying the edges in the tree
-"""
 def tree_to_graph(tree, n = 200):
+    """
+    Convert a TSKit tree into a node feature array and edge list (graph representation).
+
+    This function converts a binary tree into a graph format suitable for machine learning models.
+    It returns node times and mutation counts, along with directed edges.
+
+    Parameters:
+        tree (tskit.Tree): A binary coalescent tree.
+        n (int): Number of sample (leaf) nodes. Assumes 2n-1 total nodes in the tree.
+
+    Returns:
+        tuple:
+            - x (np.ndarray): Array of shape (2n - 1, 2), where the first column contains node times
+                              and the second column contains mutation counts.
+            - edge_index (np.ndarray): Array of shape (E, 2) specifying directed edges (parent → child).
+    """
     tree = tree.split_polytomies()
     g = nx.DiGraph(tree.as_dict_of_dicts())
         
@@ -56,12 +66,19 @@ def tree_to_graph(tree, n = 200):
     
     return np.array(X), edge_index
 
-import tskit
-
-"""
-Converts edge and node features (assumed to have node ages in the first column) into a TSKit tree
-"""
 def graph_to_tree(x, edges):
+    """
+    Convert node features and edges into a TSKit tree.
+
+    This function builds a tree from graph data, where node times are used to reconstruct coalescent events.
+
+    Parameters:
+        x (np.ndarray): Node feature matrix of shape (2n - 1, k). The first column must be node times.
+        edges (array-like): Array of shape (E, 2) specifying edges (parent, child) in the tree.
+
+    Returns:
+        tskit.Tree: A TSKit tree object constructed from the node and edge data.
+    """
     n_nodes = (x.shape[0] + 1) // 2
     
     x_ = x[:,0]
@@ -93,11 +110,17 @@ def graph_to_tree(x, edges):
     
     return ts_tree
 
-"""
-Takes an array as input (1-D condensed distance matrix or 2-D array of observations) and returns a TSKit tree
-resulting from a hierarchichal clustering.
-"""
 def distmat_to_tree(D, metric = 'euclidean'):
+    """
+    Construct a TSKit tree from a distance matrix using hierarchical clustering.
+
+    Parameters:
+        D (np.ndarray): Either a condensed 1D distance matrix or a 2D array of observations.
+        metric (str): Distance metric to use for hierarchical clustering (default: 'euclidean').
+
+    Returns:
+        tskit.Tree: A binary coalescent tree reconstructed from the distance matrix.
+    """
     edges = []
     Z = linkage(D, metric = metric)
     
@@ -115,11 +138,19 @@ def distmat_to_tree(D, metric = 'euclidean'):
     # we use the distance divided by 2 as the branch length 
     return graph_to_tree(x, edges)
 
-"""
-Converts tree into a condensed genealogical distance matrix (slow version, to be replaced)
-Condensed meaning the flattened version of the upper triangular entries (non-redundant)
-"""
 def tree_to_distmat(tree):
+    """
+    Convert a TSKit tree into a condensed genealogical distance matrix.
+
+    This function computes the pairwise genealogical distances between all sample nodes
+    and returns the upper-triangular condensed form of the matrix.
+
+    Parameters:
+        tree (tskit.Tree): A binary coalescent tree with sample nodes.
+
+    Returns:
+        np.ndarray: A 1D condensed distance matrix suitable for input to functions like `scipy.cluster.hierarchy.linkage`.
+    """
     tree = tree.split_polytomies()
     
     n_nodes = len(list(tree.nodes()))
@@ -137,13 +168,18 @@ def tree_to_distmat(tree):
     # condense the matrix and return
     return squareform(D)
     
-"""
-Pads sequences to the same length.
-Takes list of 2d arrays [(n_sites, n_samples)] and pads to the max length and returns (b, max_sites, n_samples)
-"""
 def pad_sequences(sequences, max_length=None, padding_value=0):
-    
+    """
+    Pad a list of 2D arrays (sequences) to the same number of rows (sites) using a given padding value.
 
+    Parameters:
+        sequences (list of np.ndarray): List of 2D arrays with shape (n_sites, n_samples).
+        max_length (int, optional): Desired number of rows to pad to. If None, the max length across sequences is used.
+        padding_value (float or int, optional): Value used for padding. Default is 0.
+
+    Returns:
+        np.ndarray: Array of shape (batch_size, max_sites, n_samples) with padded sequences.
+    """
     if max_length is None:
         max_length = max(len(seq) for seq in sequences)
 
@@ -171,6 +207,27 @@ mode: [seriate_match (only for two populations, seriates the first population an
 def format_matrix(x, pos, pop_sizes, y = None, 
                   out_shape = (2, 32, 128), 
                   metric = 'cosine', mode = 'seriate'):
+    """
+    Format genotype matrix into a standardized shape, optionally sorting or matching individuals using seriation.
+
+    Parameters:
+        x (np.ndarray): Genotype matrix of shape (n_individuals, n_sites).
+        pos (array-like): Genomic site positions of shape (n_sites,).
+        pop_sizes (tuple): Tuple indicating population sizes (s0, s1) or (s0,).
+        y (np.ndarray, optional): Label or segmentation matrix with the same shape as x.
+        out_shape (tuple): Target output shape (n_pops, n_ind, n_sites).
+        metric (str): Distance metric for seriation and matching.
+        mode (str): Mode of formatting, options are:
+            - 'seriate_match': Seriate one population and match to another using the Hungarian algorithm.
+            - 'seriate': Seriate individuals within one population.
+            - 'pad': Only pad/crop without sorting.
+
+    Returns:
+        tuple:
+            - np.ndarray: Formatted genotype matrix of shape (n_pops, n_ind, n_sites) or (n_ind, n_sites).
+            - np.ndarray: Modified site positions of shape (n_sites,).
+            - np.ndarray or None: Modified label/segmentation data if provided.
+    """
     if len(pop_sizes) == 1:
         s0 = pop_sizes[0]
         s1 = 0
@@ -312,6 +369,17 @@ Converts a genotype matrix (n_samples, n_sites) to a unique site histogram where
 is a unique column of the input and the last column of the array is the proportion of the data made up by that site.
 """
 def to_unique(X):
+    """
+    Identify unique site patterns across a genotype matrix and compute their frequencies.
+
+    Parameters:
+        X (np.ndarray): Input matrix of shape (n_individuals, n_sites).
+
+    Returns:
+        np.ndarray: Array of unique patterns with frequencies concatenated. 
+                    Shape is (n_unique_patterns, n_individuals + 1), 
+                    where the last column is the normalized frequency.
+    """
     site_hist = dict()
     
     ix = 0
@@ -353,10 +421,18 @@ def to_unique(X):
     
     return x
 
-"""
-Fast seriation.  (find source)
-"""
-def seriate_spectral(x, C):    
+def seriate_spectral(x, C): 
+    """
+    Reorder rows in a matrix using spectral seriation (Fiedler vector approach).
+
+    Parameters:
+        x (np.ndarray): Data matrix of shape (n_samples, n_features).
+
+    Returns:
+        tuple:
+            - np.ndarray: Spectrally ordered matrix.
+            - np.ndarray: Indices of the original rows in the new order.
+    """
     C[np.where(np.isnan(C))] = 0.
 
     C = np.diag(C.sum(axis = 1)) - C
@@ -369,24 +445,5 @@ def seriate_spectral(x, C):
     
     return x, ix
 
-
-
-from io import BytesIO, StringIO
-from skbio.tree import TreeNode
-from skbio import read
-import copy
-import networkx as nx
-import itertools
-
-if __name__ == '__main__':
-    import tskit
-    
-    import matplotlib.pyplot as plt
-    import time
-    
-    ts = tskit.load('test.trees')
-    tree = ts.first()
-    x, edge_index = tree_to_graph(tree)
-    
 
     
