@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from popgenml.data.io_ import read_slim
+from popgenml.data.functions import newick_to_tree
 
 import msprime
 import numpy as np
@@ -11,6 +12,7 @@ import subprocess
 
 from numpy.polynomial.chebyshev import Chebyshev
 from pkg_resources import resource_filename
+import re
 
 """
 Base class to define the functionality for different pop size history priors.  These are used to sample population size trajectoies that can be approximated in msprime or another simulator
@@ -65,6 +67,7 @@ class ChebyshevHistory(PiecewisePopSizePrior):
         self.min_eps = min_eps
         
         self.max_log_time = max_log_time
+        
         
     def get_N(self, co, eps):
         p = Chebyshev(co)
@@ -126,6 +129,113 @@ class BaseSimulator(object):
         self.mu = mu
         self.r = r        
         self.n_samples = n_samples
+
+"""
+"""
+class DiscoalSimulator(BaseSimulator):
+    def __init__(self, prior = ChebyshevHistory(), L = int(1e5), mu = 1.5e-8, r = 1.007e-8, n_samples = [16], **kwargs):
+        super().__init__(L = L, mu = mu, r = r, n_samples = n_samples, **kwargs)
+        
+        self.prior = prior
+        
+    def simulate(self):
+        pop_size_str = ''
+        t, N, co =  self.prior.sample()
+        
+        Nt = list(zip(N, t))
+        
+        N0 = Nt[0][0]
+        for (N, t) in Nt[1:]:
+            _ = ' -en {0} 0 {1}'.format(t / (2 * N0), N / N0)            
+            pop_size_str += _
+        
+        N = Nt[0][0]
+        
+        s = 10 ** np.random.uniform(-4, -2)
+        a = 2 * N * s
+        x_ = np.random.uniform(0.05, 0.95)
+        
+        self.co = np.concatenate([co, np.array([a, x_])])
+        
+        cmd = 'discoal {0} 1 100000 -t {1} -r {2} -T' + pop_size_str \
+             + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {} -ws 0'.format(a, x_)
+        theta = 2 * N * self.mu * self.L
+        rho = 2 * N * self.r * self.L
+        
+        cmd_ = cmd.format(self.n_samples[0], theta, rho)        
+        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+        
+        lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            lines.append(line.rstrip())  # Remove trailing newline
+        
+        lines = lines[5:]
+        
+        trees = []
+        intervals = []
+        l = 0
+        
+        while True:
+            line = lines[0]
+            del lines[0]
+            
+            if len(line) > 0:
+                
+                if line[0] == '[':
+                    n_sites = re.findall('\[(\d+)\]', line)[0]
+                    n_digits = len(n_sites)
+                    
+                    n_sites = int(n_sites)
+                    
+                    intervals.append((l, l + n_sites - 1))
+                    l += n_sites
+                    
+                    line = line[n_digits + 2:]
+    
+                    tree = newick_to_tree(line, multiplier = 2 * N)
+                    trees.append(tree)
+                else:
+                    break
+            else:
+                break
+        
+        start = 0
+        while lines[start] != '//':
+            start += 1
+
+        start += 1        
+        lines = lines[start:]
+        n_segsites = int(lines[0].split()[-1])
+        pos = np.array(list(map(float, lines[1].split()[1:])))
+        
+        trees_ = []
+        intervals_ = []       
+        for ix in range(len(trees)):
+            l, r = intervals[ix]
+            l /= self.L
+            r /= self.L
+            
+            ii = np.where((pos >= l) & (pos < r))[0]
+            if len(ii) > 0:
+                trees_.append(trees[ix])
+                intervals_.append(intervals[ix])
+            
+        x = []
+        for line in lines[2:]:
+            x.append(np.fromstring(line,'u1') - ord('0'))            
+        
+        x = np.array(x, dtype = np.uint8)
+        
+        result = dict()
+        result['x'] = x
+        result['pos'] = pos
+        result['ts'] = trees_ # just a list of trees here
+        result['intervals'] = intervals_
+        
+        return result
 
 """
 Class for simulating with msprime.
@@ -306,3 +416,6 @@ class SlimSimulator(object):
         
         return X, pos, y
             
+if __name__ == '__main__':
+    sim = DiscoalSimulator()
+    sim.simulate()
