@@ -159,6 +159,7 @@ class DiscoalSimulator(BaseSimulator):
         
         cmd = 'discoal {0} 1 100000 -t {1} -r {2} -T' + pop_size_str \
              + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {} -ws 0'.format(a, x_)
+             
         theta = 2 * N * self.mu * self.L
         rho = 2 * N * self.r * self.L
         
@@ -172,26 +173,37 @@ class DiscoalSimulator(BaseSimulator):
                 break
             lines.append(line.rstrip())  # Remove trailing newline
         
-        lines = lines[5:]
-        
+        while True:
+            line = lines[0]
+            
+            if len(line) == 0:
+                del lines[0]
+                continue
+            
+            if not line[0] == '[':
+                del lines[0]
+            else:
+                break
+                    
         trees = []
         intervals = []
         l = 0
+        
+        bins = [0]
         
         while True:
             line = lines[0]
             del lines[0]
             
             if len(line) > 0:
-                
                 if line[0] == '[':
                     n_sites = re.findall('\[(\d+)\]', line)[0]
                     n_digits = len(n_sites)
-                    
                     n_sites = int(n_sites)
                     
-                    intervals.append((l, l + n_sites - 1))
+                    intervals.append((l, l + n_sites))
                     l += n_sites
+                    bins.append(l)
                     
                     line = line[n_digits + 2:]
     
@@ -201,7 +213,7 @@ class DiscoalSimulator(BaseSimulator):
                     break
             else:
                 break
-        
+                    
         start = 0
         while lines[start] != '//':
             start += 1
@@ -212,17 +224,25 @@ class DiscoalSimulator(BaseSimulator):
         pos = np.array(list(map(float, lines[1].split()[1:])))
         
         trees_ = []
-        intervals_ = []       
+        intervals_ = []
+        n_snps = 0
+        
+        intervals = np.array(intervals)
+        #ii = np.digitize(pos, np.array(bins) / self.L)
+        #print(len(ii), n_segsites)
+                
         for ix in range(len(trees)):
             l, r = intervals[ix]
             l /= self.L
             r /= self.L
             
             ii = np.where((pos >= l) & (pos < r))[0]
+            n_snps += len(ii)
+            
             if len(ii) > 0:
                 trees_.append(trees[ix])
                 intervals_.append(intervals[ix])
-            
+           
         x = []
         for line in lines[2:]:
             x.append(np.fromstring(line,'u1') - ord('0'))            
