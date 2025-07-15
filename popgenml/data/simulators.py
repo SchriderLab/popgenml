@@ -231,16 +231,14 @@ class DiscoalSimulator(BaseSimulator):
                 
         for ix in range(len(trees)):
             l, r = intervals[ix]
-            l /= self.L
-            r /= self.L
-            
-            ii = np.where((pos >= l) & (pos < r))[0]
+
+            ii = np.where((pos * self.L >= l) & (pos * self.L < r))[0]
             n_snps += len(ii)
             
             if len(ii) > 0:
                 trees_.append(trees[ix])
                 intervals_.append(intervals[ix])
-           
+                   
         x = []
         for line in lines[2:]:
             x.append(np.fromstring(line,'u1') - ord('0'))            
