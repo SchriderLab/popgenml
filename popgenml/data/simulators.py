@@ -228,8 +228,6 @@ class DiscoalSimulator(BaseSimulator):
         n_snps = 0
         
         intervals = np.array(intervals)
-        #ii = np.digitize(pos, np.array(bins) / self.L)
-        #print(len(ii), n_segsites)
                 
         for ix in range(len(trees)):
             l, r = intervals[ix]
