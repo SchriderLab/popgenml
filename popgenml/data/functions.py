@@ -285,8 +285,13 @@ def pad_sequences(sequences, max_length=None, padding_value=0):
 
     padded_sequences = []
     for seq in sequences:
-        padded_seq = np.pad(seq, ((0, max_length - len(seq)), (0, 0)), mode='constant', constant_values=padding_value)
-        padded_sequences.append(padded_seq)
+        if len(seq) > max_length:
+            ii = np.random.choice(range(len(seq) - max_length))
+            seq = seq[ii:ii + max_length]
+            padded_sequences.append(seq)
+        else:
+            padded_seq = np.pad(seq, ((0, max_length - len(seq)), (0, 0)), mode='constant', constant_values=padding_value)
+            padded_sequences.append(padded_seq)
 
     return np.array(padded_sequences)
 
