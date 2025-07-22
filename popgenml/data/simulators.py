@@ -14,6 +14,8 @@ from numpy.polynomial.chebyshev import Chebyshev
 from pkg_resources import resource_filename
 import re
 
+import pickle
+
 """
 Base class to define the functionality for different pop size history priors.  These are used to sample population size trajectoies that can be approximated in msprime or another simulator
 as piecewise constant
@@ -158,12 +160,14 @@ class DiscoalSimulator(BaseSimulator):
         self.co = np.concatenate([co, np.array([a, x_])])
         
         cmd = 'discoal {0} 1 100000 -t {1} -r {2} -T' + pop_size_str \
-             + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {} -ws 0'.format(a, x_)
+            # + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {} -ws 0'.format(a, x_)
              
         theta = 2 * N * self.mu * self.L
         rho = 2 * N * self.r * self.L
         
-        cmd_ = cmd.format(self.n_samples[0], theta, rho)        
+        cmd_ = cmd.format(self.n_samples[0], theta, rho)
+        print(cmd_)
+        
         process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
         
         lines = []
@@ -172,6 +176,8 @@ class DiscoalSimulator(BaseSimulator):
             if not line:
                 break
             lines.append(line.rstrip())  # Remove trailing newline
+        
+        pickle.dump(lines, open('lines.pkl', 'wb'))
         
         while True:
             line = lines[0]
