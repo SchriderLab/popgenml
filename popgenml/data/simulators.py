@@ -148,7 +148,7 @@ class DiscoalSimulator(BaseSimulator):
         
         N0 = Nt[0][0]
         for (N, t) in Nt[1:]:
-            _ = ' -en {0} 0 {1}'.format(t / (2 * N0), N / N0)            
+            _ = ' -en {0} 0 {1}'.format(t / (4 * N0), N / N0)            
             pop_size_str += _
         
         N = Nt[0][0]
