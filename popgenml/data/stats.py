@@ -105,7 +105,7 @@ def sfs(x):
     Returns:
         np.ndarray: Normalized 1D array of site frequency spectrum values (excluding fixed sites).
     """
-    sfs, _ = np.histogram(x.sum(0), bins = list(range(1, x.shape[0])))
+    sfs, _ = np.histogram(x.sum(0), bins = list(range(1, x.shape[0] + 1)))
     sfs = sfs.astype(np.float32)
     sfs /= np.sum(sfs)
     
