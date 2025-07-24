@@ -15,6 +15,8 @@ import itertools
 import tskit
 import newick
 import tskit
+import copy
+from dataclasses import replace
 
 def newick_to_tree(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None, multiplier = 1.
@@ -48,6 +50,7 @@ def newick_to_tree(
     if len(trees) == 0:
         raise ValueError("Newick string was empty")
     tree = trees[0]
+    
     tables = tskit.TableCollection(span)
     if time_units is not None:
         tables.time_units = time_units
@@ -72,7 +75,10 @@ def newick_to_tree(
     )
             
     ii = 0
+    n_leaf_nodes = 0
     for newick_node in tree.walk():
+        if len(newick_node.descendants) == 0:
+            n_leaf_nodes += 1
         newick_node.length *= multiplier
 
     id_map = {}
@@ -85,13 +91,21 @@ def newick_to_tree(
                 metadata[node_name_key] = newick_node.name
             if newick_node.comment:
                 metadata["comment"] = newick_node.comment
-            id_map[newick_node] = tables.nodes.add_row(
-                flags=flags, time = time, metadata=metadata
-            )
+                
+            if newick_node.name:
+                id_map[newick_node] = tables.nodes.add_row(
+                    flags=flags, time = time, metadata=metadata, individual = int(newick_node.name)
+                )
+            else:
+                id_map[newick_node] = tables.nodes.add_row(
+                    flags=flags, time = time, metadata=metadata, individual = -1
+                )
         return id_map[newick_node]
 
     root = next(tree.walk())
     get_or_add_node(root, 0)
+    
+    edges = []
     for newick_node in tree.walk():
         node_id = id_map[newick_node]
         for child in newick_node.descendants:
@@ -104,15 +118,31 @@ def newick_to_tree(
                 )
             child_node_id = get_or_add_node(child, tables.nodes[node_id].time - length)
             tables.edges.add_row(0, span, node_id, child_node_id)
+                        
     # Rewrite node times to fit the tskit convention of zero at the youngest leaf
-    nodes = tables.nodes.copy()
+    nodes = list(tables.nodes.copy())
     youngest = min(tables.nodes.time)
     
     tables.nodes.clear()
+    individuals = tables.individuals
+    
+    for k in range(n_leaf_nodes):
+        individuals.add_row(flags = 0)
+    
+    ii = n_leaf_nodes
+    
+    ids = []
     for node in nodes:
+        if "name" in node.metadata.keys():
+            id_ = int(node.metadata["name"])
+        else:
+            id_ = -1
+            
         tables.nodes.append(node.replace(time=node.time - youngest + root.length))
+        
     tables.sort()
-    return tables.tree_sequence().first(sample_lists = True)
+    
+    return tables.tree_sequence()
 
 def tree_to_graph(tree, n = 200):
     """
@@ -238,7 +268,7 @@ def distmat_to_tree(D, metric = 'euclidean'):
     # we use the distance divided by 2 as the branch length 
     return graph_to_tree(x, edges)
 
-def tree_to_distmat(tree):
+def tree_to_distmat(tree, node_dict = None):
     """
     Convert a TSKit tree into a condensed genealogical distance matrix.
 
@@ -252,21 +282,20 @@ def tree_to_distmat(tree):
         np.ndarray: A 1D condensed distance matrix suitable for input to functions like `scipy.cluster.hierarchy.linkage`.
     """
     tree = tree.split_polytomies()
-    
-    n_nodes = len(list(tree.nodes()))
-        
-    node_ids = [u for u in tree.nodes()]
+            
     leaf_nodes = [u for u in tree.nodes() if tree.is_leaf(u)]
 
-    leaf_nodes = sorted(leaf_nodes)
-    D = np.zeros((len(leaf_nodes), len(leaf_nodes)))
+    if node_dict is None:
+        leaf_nodes = range(len(leaf_nodes))
+    else:
+        leaf_nodes = [node_dict[u] for u in range(len(leaf_nodes))]
+    D = np.zeros((len(leaf_nodes) * (len(leaf_nodes) - 1) // 2,))
 
-    for i, j in itertools.combinations(range(len(leaf_nodes)), 2):
-        D[i, j] = tree.distance_between(i, j)
-        D[j, i] = D[i, j]
+    for ix, (i, j) in enumerate(itertools.combinations(leaf_nodes, 2)):
+        D[ix] = tree.distance_between(i, j)
         
     # condense the matrix and return
-    return squareform(D)
+    return D
     
 def pad_sequences(sequences, max_length=None, padding_value=0):
     """
