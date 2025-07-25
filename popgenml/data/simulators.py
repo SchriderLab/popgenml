@@ -160,7 +160,7 @@ class DiscoalSimulator(BaseSimulator):
         self.co = np.concatenate([co, np.array([a, x_])])
         
         cmd = 'discoal {0} 1 100000 -t {1} -r {2} -T' + pop_size_str \
-            # + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {} -ws 0'.format(a, x_)
+             + ' -Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -a {} -x {} -ws 0'.format(a, x_)
              
         theta = 2 * N * self.mu * self.L
         rho = 2 * N * self.r * self.L
