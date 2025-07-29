@@ -132,6 +132,110 @@ class BaseSimulator(object):
         self.r = r        
         self.n_samples = n_samples
 
+class SimpleDiscoalSimulator(BaseSimulator):
+    def __init__(self, L = int(1e5), mu = 1.5e-8, r = 1.007e-8, n_samples = [16], **kwargs):
+        super().__init__(L = L, mu = mu, r = r, n_samples = n_samples, **kwargs)
+        
+        self.N = 75000
+        
+    def simulate(self):
+        theta = 2 * self.N * self.mu * self.L
+        rho = 2 * self.N * self.r * self.L
+
+        cmd = 'discoal {0} 1 100000 -t {1} -r {2} -T'
+        
+        cmd_ = cmd.format(self.n_samples[0], theta, rho)
+        print(cmd_)
+        
+        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+        
+        lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            lines.append(line.rstrip())  # Remove trailing newline
+                
+        while True:
+            line = lines[0]
+            
+            if len(line) == 0:
+                del lines[0]
+                continue
+            
+            if not line[0] == '[':
+                del lines[0]
+            else:
+                break
+                    
+        trees = []
+        intervals = []
+        l = 0
+        
+        bins = [0]
+        
+        while True:
+            line = lines[0]
+            del lines[0]
+            
+            if len(line) > 0:
+                if line[0] == '[':
+                    n_sites = re.findall('\[(\d+)\]', line)[0]
+                    n_digits = len(n_sites)
+                    n_sites = int(n_sites)
+                    
+                    intervals.append((l, l + n_sites))
+                    l += n_sites
+                    bins.append(l)
+                    
+                    line = line[n_digits + 2:]
+    
+                    tree = newick_to_tree(line, multiplier = 2 * self.N)
+                    trees.append(tree)
+                else:
+                    break
+            else:
+                break
+                    
+        start = 0
+        while lines[start] != '//':
+            start += 1
+
+        start += 1        
+        lines = lines[start:]
+        n_segsites = int(lines[0].split()[-1])
+        pos = np.array(list(map(float, lines[1].split()[1:])))
+        
+        trees_ = []
+        intervals_ = []
+        n_snps = 0
+        
+        intervals = np.array(intervals)
+                
+        for ix in range(len(trees)):
+            l, r = intervals[ix]
+
+            ii = np.where((pos * self.L >= l) & (pos * self.L < r))[0]
+            n_snps += len(ii)
+            
+            if len(ii) > 0:
+                trees_.append(trees[ix])
+                intervals_.append(intervals[ix])
+                   
+        x = []
+        for line in lines[2:]:
+            x.append(np.fromstring(line,'u1') - ord('0'))            
+        
+        x = np.array(x, dtype = np.uint8)
+        
+        result = dict()
+        result['x'] = x
+        result['pos'] = pos
+        result['ts'] = trees_ # just a list of trees here
+        result['intervals'] = intervals_
+        
+        return result
+
 """
 """
 class DiscoalSimulator(BaseSimulator):
@@ -176,9 +280,7 @@ class DiscoalSimulator(BaseSimulator):
             if not line:
                 break
             lines.append(line.rstrip())  # Remove trailing newline
-        
-        pickle.dump(lines, open('lines.pkl', 'wb'))
-        
+                
         while True:
             line = lines[0]
             
