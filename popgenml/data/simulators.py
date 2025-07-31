@@ -137,6 +137,7 @@ class SimpleDiscoalSimulator(BaseSimulator):
         super().__init__(L = L, mu = mu, r = r, n_samples = n_samples, **kwargs)
         
         self.N = 75000
+        self.co = [self.N]
         
     def simulate(self):
         theta = 2 * self.N * self.mu * self.L
