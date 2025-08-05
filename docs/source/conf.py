@@ -10,7 +10,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('.'))
 
-from popgenml.data.functions import *
+from popgenml.data.stats import *
 
 project = 'popgenml'
 copyright = '2025, Dylan Ray'
