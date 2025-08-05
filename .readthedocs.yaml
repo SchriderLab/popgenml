@@ -18,7 +18,7 @@ build:
         - mkdir -p $READTHEDOCS_OUTPUT/html/
         - mkdir docs/generated
         - mkdir docs/source/static_
-        - export PYTHONPATH="$PYTHONPATH:/home/docs/.asdf/installs/python/3.9.22/lib/python3.9/site-packages/
+        - export PYTHONPATH="$PYTHONPATH:/home/docs/.asdf/installs/python/3.9.22/lib/python3.9/site-packages/"
         - sphinx-build -M html docs/source $READTHEDOCS_OUTPUT/html/
 
 python:
