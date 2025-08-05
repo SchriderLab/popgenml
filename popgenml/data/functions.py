@@ -1,22 +1,15 @@
 import numpy as np
 
-from popgenml.data.io_ import write_to_ms, load_ms
-import sys
-
 from seriate import seriate
 from scipy.spatial.distance import pdist, cdist, squareform
 from scipy.optimize import linear_sum_assignment
 
 from scipy.sparse.linalg import eigs
-from sklearn.metrics import pairwise_distances
 import networkx as nx
 from scipy.cluster.hierarchy import linkage
 import itertools
 import tskit
 import newick
-import tskit
-import copy
-from dataclasses import replace
 
 def newick_to_tree(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None, multiplier = 1.
