@@ -11,12 +11,7 @@ Stats
 .. autosummary::
    :toctree: generated/
 
-   popgenml.data.stats.sfs
-   popgenml.data.stats.theta_pi
-   popgenml.data.stats.watterson_theta
-   popgenml.data.stats.tajimas_d
-   popgenml.data.stats.ld_stats
-   popgenml.data.stats.het_diversity
+   popgenml.data.stats
    
 Functions / Conversions
 -------------------------
