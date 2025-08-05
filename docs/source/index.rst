@@ -6,9 +6,7 @@
 popgenml documentation
 ======================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+Python package to assist with machine learning research in population genetics.  Can compute basic statistics, run inference routines such as Relate (https://myersgroup.github.io/relate/), and convert between various representations of population genetic data.
 
 
 .. toctree::
