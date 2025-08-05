@@ -502,9 +502,7 @@ def to_unique(X):
         X (np.ndarray): Input matrix of shape (n_individuals, n_sites).
 
     Returns:
-        np.ndarray: Array of unique patterns with frequencies concatenated. 
-                    Shape is (n_unique_patterns, n_individuals + 1), 
-                    where the last column is the normalized frequency.
+        np.ndarray: Array of unique patterns with frequencies concatenated with shape (n_unique_patterns, n_individuals + 1), where the last column is the normalized frequency.
     """
     site_hist = dict()
     
