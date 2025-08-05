@@ -16,6 +16,7 @@ build:
         - pip install sphinx
         - pip install -r docs/requirements.txt
         - mkdir -p $READTHEDOCS_OUTPUT/html/
+        - mkdir docs/generated
         - sphinx-build -M html docs/source $READTHEDOCS_OUTPUT/html/
 
 python:
