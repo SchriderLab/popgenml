@@ -149,10 +149,9 @@ def tree_to_graph(tree, n = 200):
         n (int): Number of sample (leaf) nodes. Assumes 2n-1 total nodes in the tree.
 
     Returns:
-        tuple:
-            - x (np.ndarray): Array of shape (2n - 1, 2), where the first column contains node times
+        x (np.ndarray): Array of shape (2n - 1, 2), where the first column contains node times
                               and the second column contains mutation counts.
-            - edge_index (np.ndarray): Array of shape (E, 2) specifying directed edges (parent → child).
+        edge_index (np.ndarray): Array of shape (E, 2) specifying directed edges (parent → child).
     """
     tree = tree.split_polytomies()
     g = nx.DiGraph(tree.as_dict_of_dicts())
