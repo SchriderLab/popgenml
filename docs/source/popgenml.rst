@@ -39,4 +39,4 @@ Relate
 .. autosummary::
    :toctree: generated/
 
-    popgenml.data.relate.relate
+   popgenml.data.relate.relate
