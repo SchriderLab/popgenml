@@ -5,6 +5,7 @@ pandas
 scikit-learn
 scikit-bio
 seriate
+numpy==1.26.4
 protobuf==3.19.0
 numpy
 prettytable
@@ -14,3 +15,5 @@ demesdraw
 newick
 jupyter
 sphinx_rtd_theme
+networkx
+scikit-allel

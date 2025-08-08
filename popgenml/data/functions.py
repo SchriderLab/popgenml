@@ -1,22 +1,15 @@
 import numpy as np
 
-from popgenml.data.io_ import write_to_ms, load_ms
-import sys
-
 from seriate import seriate
 from scipy.spatial.distance import pdist, cdist, squareform
 from scipy.optimize import linear_sum_assignment
 
 from scipy.sparse.linalg import eigs
-from sklearn.metrics import pairwise_distances
 import networkx as nx
 from scipy.cluster.hierarchy import linkage
 import itertools
 import tskit
 import newick
-import tskit
-import copy
-from dataclasses import replace
 
 def newick_to_tree(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None, multiplier = 1.
@@ -156,10 +149,9 @@ def tree_to_graph(tree, n = 200):
         n (int): Number of sample (leaf) nodes. Assumes 2n-1 total nodes in the tree.
 
     Returns:
-        tuple:
-            - x (np.ndarray): Array of shape (2n - 1, 2), where the first column contains node times
+        x (np.ndarray): Array of shape (2n - 1, 2), where the first column contains node times
                               and the second column contains mutation counts.
-            - edge_index (np.ndarray): Array of shape (E, 2) specifying directed edges (parent → child).
+        edge_index (np.ndarray): Array of shape (E, 2) specifying directed edges (parent → child).
     """
     tree = tree.split_polytomies()
     g = nx.DiGraph(tree.as_dict_of_dicts())
@@ -510,9 +502,7 @@ def to_unique(X):
         X (np.ndarray): Input matrix of shape (n_individuals, n_sites).
 
     Returns:
-        np.ndarray: Array of unique patterns with frequencies concatenated. 
-                    Shape is (n_unique_patterns, n_individuals + 1), 
-                    where the last column is the normalized frequency.
+        np.ndarray: Array of unique patterns with frequencies concatenated with shape (n_unique_patterns, n_individuals + 1), where the last column is the normalized frequency.
     """
     site_hist = dict()
     

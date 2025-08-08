@@ -10,16 +10,13 @@ build:
   tools:
     python: "3.9"
   jobs:
-    build:
-      html:
-        - python setup.py install
-        - pip install sphinx
-        - pip install -r docs/requirements.txt
-        - mkdir -p $READTHEDOCS_OUTPUT/html/
-        - mkdir -p docs/generated
-        - mkdir -p docs/source/static_
-        - sphinx-build -M html docs/source $READTHEDOCS_OUTPUT/html/
+    pre_build:
+      - mkdir -p _static
+      - pip install -e .
 
 python:
   install:
     - requirements: docs/requirements.txt
+
+sphinx:
+  configuration: docs/source/conf.py

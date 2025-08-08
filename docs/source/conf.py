@@ -8,7 +8,9 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('.'))
+
+from popgenml.data.stats import *
 
 project = 'popgenml'
 copyright = '2025, Dylan Ray'
@@ -27,11 +29,11 @@ extensions = ['sphinx.ext.autodoc',
 
 templates_path = ['_templates']
 exclude_patterns = []
-#autosummary_generate = True
+autosummary_generate = True
 
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'alabaster'
+html_theme = 'classic'
 html_static_path = ['_static']
