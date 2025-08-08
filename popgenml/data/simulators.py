@@ -380,7 +380,7 @@ class BaseMSPrimeSimulator(BaseSimulator):
     # r: recombination rate
     # whether or not diploid individuals are simulated (vs haploid)
     # the number of samples
-    def __init__(self, L = int(1e5), mu = 1.5e-8, r = 1.007e-8, ploidy = 1, 
+    def __init__(self, L = int(1e5), mu = 1.5e-8, r = 1.007e-8, ploidy = 2, 
                  n_samples = [16], N = 75000):
         self.L = L
         self.mu = mu
@@ -419,10 +419,14 @@ class BaseMSPrimeSimulator(BaseSimulator):
         """
         self.demography = self.make_demography()
         
+        n_samples = sum(self.n_samples)
+        if self.ploidy == 2:
+            n_samples = n_samples // 2
+        
         # simulate ancestry
         ts = msprime.sim_ancestry(
             #sample_size=2 * population_size,
-            samples = sum(self.n_samples),
+            samples = n_samples,
             sequence_length = self.L,
             recombination_rate=self.r,
             ploidy = self.ploidy,
@@ -487,7 +491,7 @@ class StepStoneSimulator(BaseMSPrimeSimulator):
         demography.add_population(name="A", initial_size=N0)
         
         for N1, T in Nt[1:]:
-            demography.add_population_parameters_change(time=T, initial_size=N1)
+            demography.add_population_parameters_change(time=T, population = "A", initial_size=N1)
             
         return demography    
     
