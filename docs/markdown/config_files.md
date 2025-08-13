@@ -6,7 +6,7 @@ This document outlines the format for the simulation configuration file. The fil
 
 This section defines the global physical parameters of the simulation.
 
-+ mu: (Required) The per-base mutation rate per generation.
++ **mu**: (Required) The per-base mutation rate per generation.
 
     + Type: Can be a fixed floating-point number or a scipy.stats distribution.
 
@@ -14,7 +14,7 @@ This section defines the global physical parameters of the simulation.
 
     + Example (distribution): mu = stats.uniform(loc=1e-9, scale=2e-8)
 
-+ r: (Required) The per-base recombination rate per generation.
++ **r**: (Required) The per-base recombination rate per generation.
 
     + Type: Can be a fixed floating-point number or a scipy.stats distribution.
 
@@ -22,7 +22,7 @@ This section defines the global physical parameters of the simulation.
 
     + Example (distribution): r = stats.loguniform(a=1e-9, b=5e-8)
 
-+ L: (Required) The total length of the simulated sequence in base pairs.
++ **L**: (Required) The total length of the simulated sequence in base pairs.
 
     + Type: Must be a single, fixed integer.
 
@@ -34,21 +34,21 @@ This section defines the properties of each population to be sampled. Each line 
 
 The value for each population must be a dictionary-like string containing the following keys:
 
-+ n: (Required) The number of individuals to sample from the population.
++ **n**: (Required) The number of individuals to sample from the population.
 
-    Type: Must be an integer greater than zero.
+    + Type: Must be an integer greater than zero.
 
-    Example: 'n': 10
+    + Example: 'n': 10
 
-+ ploidy: (Required) The ploidy of the sampled individuals.
++ **ploidy**: (Required) The ploidy of the sampled individuals.
 
     Type: Must be an integer, either 1 (haploid) or 2 (diploid).
 
     Example: 'ploidy': 2
 
-+ N0 or Nt: (Required) A population size model must be specified using either N0 for a constant size or Nt for a variable size history. If both are provided, Nt will be used and N0 will be ignored.
++ **N0 or Nt**: (Required) A population size model must be specified using either N0 for a constant size or Nt for a variable size history. If both are provided, Nt will be used and N0 will be ignored.
 
-    + N0: Defines a constant effective population size (N_e).
+    + **N0**: Defines a constant effective population size (N_e).
 
         + Type: Can be a fixed number (integer or float) or a scipy.stats distribution.
 
@@ -56,7 +56,7 @@ The value for each population must be a dictionary-like string containing the fo
 
         + Example (distribution): 'N0': 'stats.loguniform(a=1000, b=50000)'
 
-    + Nt: Defines a variable effective population size over time. The population size is piecewise constant, changing at specified time points.
+    + **Nt**: Defines a variable effective population size over time. The population size is piecewise constant, changing at specified time points.
 
         + Type: Can be a History class instance (like SplineHistory) or a direct list of (size, time) tuples.
 
