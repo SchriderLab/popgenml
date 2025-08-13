@@ -10,23 +10,23 @@ This section defines the global physical parameters of the simulation.
 
     + Type: Can be a fixed floating-point number or a scipy.stats distribution.
 
-    + Example (fixed): mu = 1.25e-8
+    + Example (fixed): ``` mu = 1.25e-8 ```
 
-    + Example (distribution): mu = stats.uniform(loc=1e-9, scale=2e-8)
+    + Example (distribution): ``` mu = stats.uniform(loc=1e-9, scale=2e-8) ```
 
 + **r**: (Required) The per-base recombination rate per generation.
 
     + Type: Can be a fixed floating-point number or a scipy.stats distribution.
 
-    + Example (fixed): r = 1e-8
+    + Example (fixed): ``` r = 1e-8 ```
 
-    + Example (distribution): r = stats.loguniform(a=1e-9, b=5e-8)
+    + Example (distribution): ``` r = stats.loguniform(a=1e-9, b=5e-8) ```
 
 + **L**: (Required) The total length of the simulated sequence in base pairs.
 
     + Type: Must be a single, fixed integer.
 
-    + Example: L = 100000
+    + Example: ``` L = 100000 ```
 
 ## [samples] Section
 
@@ -38,13 +38,13 @@ The value for each population must be a dictionary-like string containing the fo
 
     + Type: Must be an integer greater than zero.
 
-    + Example: 'n': 10
+    + Example: ``` 'n': 10 ```
 
 + **ploidy**: (Required) The ploidy of the sampled individuals.
 
     Type: Must be an integer, either 1 (haploid) or 2 (diploid).
 
-    Example: 'ploidy': 2
+    Example: ``` 'ploidy': 2 ```
 
 + **N0 or Nt**: (Required) A population size model must be specified using either N0 for a constant size or Nt for a variable size history. If both are provided, Nt will be used and N0 will be ignored.
 
