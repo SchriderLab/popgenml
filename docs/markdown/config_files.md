@@ -1,7 +1,8 @@
-Configuration File Manual
+# Configuration File Manual
 
 This document outlines the format for the simulation configuration file. The file uses the INI format and is divided into three main sections: [base] for global parameters, [samples] for defining sample populations, and [migration] for defining migration rates between them.
-[base] Section
+
+## [base] Section
 
 This section defines the global physical parameters of the simulation.
 
@@ -27,7 +28,7 @@ This section defines the global physical parameters of the simulation.
 
         Example: L = 100000
 
-[samples] Section
+## [samples] Section
 
 This section defines the properties of each population to be sampled. Each line represents a distinct population, identified by a custom name (e.g., pop1).
 
@@ -65,7 +66,7 @@ The value for each population must be a dictionary-like string containing the fo
 
             Example (list of tuples): 'Nt': '[(10000, 0), (50000, 500), (10000, 2000)]'
 
-[migration] Section
+## [migration] Section
 
 This section defines the rate of migration between pairs of populations defined in the [samples] section.
 
@@ -85,6 +86,7 @@ Full Example
 
 Here is a complete example of a valid configuration file including a [migration] section:
 
+```
 [base]
 mu = stats.uniform(loc=1e-9, scale=2e-8)
 r = 1e-8
@@ -106,4 +108,4 @@ pop1_pop2 = [(0.0, 0), (0.001, 500), (0.0, 2000)]
 
 # Migration from pop1 into pop2 is defined by a spline history.
 pop2_pop1 = SplineHistory(N=stats.uniform(0, 0.005))
-
+```
