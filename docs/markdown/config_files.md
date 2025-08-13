@@ -70,19 +70,21 @@ The value for each population must be a dictionary-like string containing the fo
 
 This section defines the rate of migration between pairs of populations defined in the [samples] section.
 
-    Key Format: The key defines the direction of migration. A key of popA_popB specifies the migration rate from popB into popA.
+### Key Format: 
 
-    Value Format: The value defines the migration rate over time, which can be constant or variable.
+The key defines the direction of migration. A key of popA_popB specifies the migration rate from popB into popA.
 
-        Type: Can be a History class instance (like SplineHistory) or a direct list of (coefficient, time) tuples.
+### Value Format: The value defines the migration rate over time, which can be constant or variable.
 
-        Mechanism: The migration rate is the fraction of popA that is made up of migrants from popB in each generation. A history [(m0, t0), (m1, t1), ...] means the migration rate is m0 until time t1, at which point it becomes m1, and so on.
++ Type: Can be a History class instance (like SplineHistory) or a direct list of (coefficient, time) tuples.
 
-        Example (History class): pop1_pop2 = SplineHistory(N=stats.uniform(0, 0.01))
++ Mechanism: The migration rate is the fraction of popA that is made up of migrants from popB in each generation. A history [(m0, t0), (m1, t1), ...] means the migration rate is m0 until time t1, at which point it becomes m1, and so on.
 
-        Example (list of tuples): pop2_pop1 = [(0.0, 0), (0.001, 500), (0.0, 2000)]
++ Example (History class): pop1_pop2 = SplineHistory(N=stats.uniform(0, 0.01))
 
-Full Example
++ Example (list of tuples): pop2_pop1 = [(0.0, 0), (0.001, 500), (0.0, 2000)]
+
+## Full Example
 
 Here is a complete example of a valid configuration file including a [migration] section:
 
