@@ -52,30 +52,20 @@ The value for each population must be a dictionary-like string containing the fo
 
         + Type: Can be a fixed number (integer or float) or a scipy.stats distribution.
 
-        + Example: 'N0': 50000
+        + Example: ``` 'N0': 50000 ```
 
-        + Example (distribution): 
-        
-        ```
-        'N0': 'stats.loguniform(a=1000, b=50000)'
-        ```
+        + Example (distribution): ``` 'N0': 'stats.loguniform(a=1000, b=50000)' ```
+
     + **Nt**: Defines a variable effective population size over time. The population size is piecewise constant, changing at specified time points.
 
         + Type: Can be a History class instance (like SplineHistory) or a direct list of (size, time) tuples.
 
         + Mechanism: A history [(y0, t0), (y1, t1), ...] means the population size is y0 until time t1, at which point it becomes y1, and so on.
 
-        + Example (History class): 
-        
-        ```
-        'Nt': 'SplineHistory(N=stats.uniform(1000, 9000))'
-        ```
-        
-        + Example (list of tuples): 
-        
-        ```
-        'Nt': '[(10000, 0), (50000, 500), (10000, 2000)]'
-        ```
+        + Example (History class): ``` 'Nt': 'SplineHistory(N=stats.uniform(1000, 9000))' ```
+
+        + Example (list of tuples): ``` 'Nt': '[(10000, 0), (50000, 500), (10000, 2000)]' ```
+
 ## [migration] Section
 
 This section defines the rate of migration between pairs of populations defined in the [samples] section.
