@@ -6,27 +6,27 @@ This document outlines the format for the simulation configuration file. The fil
 
 This section defines the global physical parameters of the simulation.
 
-    mu: (Required) The per-base mutation rate per generation.
++ mu: (Required) The per-base mutation rate per generation.
 
-        Type: Can be a fixed floating-point number or a scipy.stats distribution.
+    + Type: Can be a fixed floating-point number or a scipy.stats distribution.
 
-        Example (fixed): mu = 1.25e-8
+    + Example (fixed): mu = 1.25e-8
 
-        Example (distribution): mu = stats.uniform(loc=1e-9, scale=2e-8)
+    + Example (distribution): mu = stats.uniform(loc=1e-9, scale=2e-8)
 
-    r: (Required) The per-base recombination rate per generation.
++ r: (Required) The per-base recombination rate per generation.
 
-        Type: Can be a fixed floating-point number or a scipy.stats distribution.
+    + Type: Can be a fixed floating-point number or a scipy.stats distribution.
 
-        Example (fixed): r = 1e-8
+    + Example (fixed): r = 1e-8
 
-        Example (distribution): r = stats.loguniform(a=1e-9, b=5e-8)
+    + Example (distribution): r = stats.loguniform(a=1e-9, b=5e-8)
 
-    L: (Required) The total length of the simulated sequence in base pairs.
++ L: (Required) The total length of the simulated sequence in base pairs.
 
-        Type: Must be a single, fixed integer.
+    + Type: Must be a single, fixed integer.
 
-        Example: L = 100000
+    + Example: L = 100000
 
 ## [samples] Section
 
@@ -34,37 +34,37 @@ This section defines the properties of each population to be sampled. Each line 
 
 The value for each population must be a dictionary-like string containing the following keys:
 
-    n: (Required) The number of individuals to sample from the population.
++ n: (Required) The number of individuals to sample from the population.
 
-        Type: Must be an integer greater than zero.
+    Type: Must be an integer greater than zero.
 
-        Example: 'n': 10
+    Example: 'n': 10
 
-    ploidy: (Required) The ploidy of the sampled individuals.
++ ploidy: (Required) The ploidy of the sampled individuals.
 
-        Type: Must be an integer, either 1 (haploid) or 2 (diploid).
+    Type: Must be an integer, either 1 (haploid) or 2 (diploid).
 
-        Example: 'ploidy': 2
+    Example: 'ploidy': 2
 
-    N0 or Nt: (Required) A population size model must be specified using either N0 for a constant size or Nt for a variable size history. If both are provided, Nt will be used and N0 will be ignored.
++ N0 or Nt: (Required) A population size model must be specified using either N0 for a constant size or Nt for a variable size history. If both are provided, Nt will be used and N0 will be ignored.
 
-        N0: Defines a constant effective population size (N_e).
+    + N0: Defines a constant effective population size (N_e).
 
-            Type: Can be a fixed number (integer or float) or a scipy.stats distribution.
+        + Type: Can be a fixed number (integer or float) or a scipy.stats distribution.
 
-            Example: 'N0': 50000
+        + Example: 'N0': 50000
 
-            Example (distribution): 'N0': 'stats.loguniform(a=1000, b=50000)'
+        + Example (distribution): 'N0': 'stats.loguniform(a=1000, b=50000)'
 
-        Nt: Defines a variable effective population size over time. The population size is piecewise constant, changing at specified time points.
+    + Nt: Defines a variable effective population size over time. The population size is piecewise constant, changing at specified time points.
 
-            Type: Can be a History class instance (like SplineHistory) or a direct list of (size, time) tuples.
+        + Type: Can be a History class instance (like SplineHistory) or a direct list of (size, time) tuples.
 
-            Mechanism: A history [(y0, t0), (y1, t1), ...] means the population size is y0 until time t1, at which point it becomes y1, and so on.
+        + Mechanism: A history [(y0, t0), (y1, t1), ...] means the population size is y0 until time t1, at which point it becomes y1, and so on.
 
-            Example (History class): 'Nt': 'SplineHistory(N=stats.uniform(1000, 9000))'
+        + Example (History class): 'Nt': 'SplineHistory(N=stats.uniform(1000, 9000))'
 
-            Example (list of tuples): 'Nt': '[(10000, 0), (50000, 500), (10000, 2000)]'
+        + Example (list of tuples): 'Nt': '[(10000, 0), (50000, 500), (10000, 2000)]'
 
 ## [migration] Section
 
