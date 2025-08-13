@@ -60,7 +60,7 @@ The value for each population must be a dictionary-like string containing the fo
 
         + Type: Can be a History class instance (like SplineHistory) or a direct list of (size, time) tuples.
 
-        + Mechanism: A history [(y0, t0), (y1, t1), ...] means the population size is y0 until time t1, at which point it becomes y1, and so on.
+        + Mechanism: A history ``` [(y0, t0), (y1, t1), ...] ``` means the population size is y0 until time t1, at which point it becomes y1, and so on.
 
         + Example (History class): ``` 'Nt': 'SplineHistory(N=stats.uniform(1000, 9000))' ```
 
@@ -78,11 +78,11 @@ The key defines the direction of migration. A key of popA_popB specifies the mig
 
 + Type: Can be a History class instance (like SplineHistory) or a direct list of (coefficient, time) tuples.
 
-+ Mechanism: The migration rate is the fraction of popA that is made up of migrants from popB in each generation. A history [(m0, t0), (m1, t1), ...] means the migration rate is m0 until time t1, at which point it becomes m1, and so on.
++ Mechanism: The migration rate is the fraction of popA that is made up of migrants from popB in each generation. A history ``` [(m0, t0), (m1, t1), ...] ``` means the migration rate is m0 until time t1, at which point it becomes m1, and so on.
 
-+ Example (History class): pop1_pop2 = SplineHistory(N=stats.uniform(0, 0.01))
++ Example (History class): ``` pop1_pop2 = SplineHistory(N=stats.uniform(0, 0.01)) ```
 
-+ Example (list of tuples): pop2_pop1 = [(0.0, 0), (0.001, 500), (0.0, 2000)]
++ Example (list of tuples): ``` pop2_pop1 = [(0.0, 0), (0.001, 500), (0.0, 2000)] ```
 
 ## Full Example
 
