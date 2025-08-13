@@ -101,9 +101,6 @@ pop1 = {'Nt': 'SplineHistory(N=stats.uniform(loc=10000, scale=140000), max_k=10)
 # A haploid population with a constant size drawn from a distribution
 pop2 = {'N0': 'stats.loguniform(a=1000, b=50000)', 'n': 20, 'ploidy': 1}
 
-# A diploid population with a fixed constant size
-pop3 = {'N0': 10000, 'n': 100, 'ploidy': 2}
-
 [migration]
 # Migration from pop2 into pop1 starts at time 500 and stops at time 2000.
 pop1_pop2 = [(0.0, 0), (0.001, 500), (0.0, 2000)]
