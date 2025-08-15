@@ -258,6 +258,13 @@ class BaseSimulator:
         if not isinstance(L_val, int):
             raise TypeError(f"The value for 'L' must be an integer, but got {type(L_val)}.")
 
+        ploidy_val = base_priors['ploidy']
+        if not isinstance(ploidy_val, int):
+            raise TypeError(f"The value for 'ploidy' must be an integer, but got {type(ploidy_val)}.")
+
+        if not ploidy_val in [1, 2]:
+            raise ValueError(f"The value for 'ploidy' given ({ploidy_val}) is not in [1, 2]...")
+    
         self.mu = base_priors['mu']
         self.r = base_priors['r']
         self.L = L_val
@@ -288,8 +295,8 @@ class BaseSimulator:
             self.samples[pop_name] = pop_priors
             
 class MSPrimeSimulator(BaseSimulator):
-    def __init__(self, *args, mutation_model = msprime.BinaryMutationModel()):
-        super().__init__(*args)
+    def __init__(self, config_file, mutation_model = msprime.BinaryMutationModel()):
+        super().__init__(config_file)
         
         self.mutation_model = mutation_model
         
@@ -345,7 +352,7 @@ class MSPrimeSimulator(BaseSimulator):
         
         return demography
                     
-    def simulate(self, *args, verbose = False):
+    def simulate(self, verbose = False):
         self.demography = self.make_demography()
                 
         samples = dict()
@@ -365,9 +372,6 @@ class MSPrimeSimulator(BaseSimulator):
             ploidy = self.ploidy,
             demography = self.demography,
         )
-        
-        # set the logging level back to what it was before the call to msprime
-        #logging.basicConfig(level = current_level, force = True)
         
         return self.mutate_and_return_(ts)
     
@@ -396,8 +400,8 @@ class MSPrimeSimulator(BaseSimulator):
         return result
 
 class DiscoalSimulator(BaseSimulator):
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, config_file):
+        super().__init__(config_file)
         
         if self.discoal_priors is not None:
             # selection coefficient
@@ -417,6 +421,10 @@ class DiscoalSimulator(BaseSimulator):
                 self.args = self.discoal_priors['args']
             else:
                 self.args = None
+        else:
+            self.s = None
+            self.x = None
+            self.args = None
                     
     def simulate(self, verbose = False):
         pops = []
@@ -611,9 +619,9 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     
     # Create a temporary file path to pass to the function
-    config_path = 'config1.ini'
+    config_path = 'config2.ini'
 
-    sim = DiscoalSimulator(config_path)
+    sim = MSPrimeSimulator(config_path)
     ret = sim.simulate(verbose = True)
     
     print(ret['x'].shape)
