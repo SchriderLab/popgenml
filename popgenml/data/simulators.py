@@ -35,7 +35,7 @@ class ParameterPrior:
 
     def __init__(self, distributions: Dict[str, Distribution]):
         """
-        Initializes the DistributionSampler.
+        Initializes the ParameterPrior.
 
         Args:
             distributions (Dict[str, Distribution]): A dictionary where keys are
@@ -96,7 +96,17 @@ class History:
         raise NotImplementedError("Subclasses must implement this method.")
 
 class BottleNeckHistory(History):
+    """
+    Size history for an instantaneous population size change that takes place some number
+    of generations ago.  
+    """
     def __init__(self, N0: Distribution, N1: Distribution, T: Distribution):
+        """
+        Args:
+            N0 (Distribution): A scipy.stats distribution object for the initial effective population at time = 0
+            N1 (Distribution): scipy.stats distribution object for the population size after time = T
+            T (Distribution): scipy.stats distribution object for T = time of the bottleneck / population expansion
+        """
         self.N0 = N0
         self.N1 = N1
         self.T = T
@@ -107,21 +117,28 @@ class BottleNeckHistory(History):
         
         N = [self.N0.rvs(size = 1)[0], self.N1.rvs(size = 1)[0]]
         
+        self.co = N + t
+        
         return t, N
 
 class SplineHistory(History):
     """
-    Generates a population size history curve using a cubic spline interpolation.
+    Generates a population size history curve using a spline interpolation.
     The population size at control points is drawn from a given scipy.stats distribution.
+    
+    The number of control points for each curve is chosen from a uniform discrete distribution with support: range(min_k, max_k + 1)
+    The times for the control points is drawn from a uniform distribution from log(t) = 0 to log(t) = max_log_time.
     """
-    def __init__(self, N: Distribution, max_k=33, max_log_time=11, n_time_points=128, kind = 'linear'):
+    def __init__(self, N: Distribution, max_k = 33, 
+                 min_k = 3, max_log_time = 11, n_time_points = 128, kind = 'linear'):
         """
         Initializes the spline history generator.
 
         Args:
             N (Distribution): A scipy.stats distribution object for sampling
                 population sizes (y-values).
-            max_k (int, optional): The maximum number of control points. Defaults to 24.
+            max_k (int, optional): The maximum number of control points. Defaults to 33.
+            min_k (int, optional): The minimum number of control points. Defaults to 3
             max_log_time (int, optional): The maximum time on a log scale. Defaults to 11.
             n_time_points (int, optional): The number of points for the final time grid. Defaults to 128.
         """
@@ -133,11 +150,11 @@ class SplineHistory(History):
         
     def sample_curve(self) -> tuple[np.ndarray, np.ndarray]:
         """
-        Generates a single population history curve.
+        Generates a parameter curve defined over time in generations.
 
         Returns:
-            tuple[np.ndarray, np.ndarray]: A tuple containing the fine time grid (T_fine)
-            and the corresponding interpolated population sizes (y_fine).
+            tuple[np.ndarray, np.ndarray]: A tuple containing the fine time grid (t)
+            and the corresponding interpolated population sizes (or another parameter) (y).
         """
         n_points = np.random.choice(range(3, self.max_k + 1, 2))
         y_points = self.N.rvs(size=n_points)
