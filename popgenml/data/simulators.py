@@ -204,7 +204,7 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
         'BottleNeckHistory': BottleNeckHistory,
     }
 
-    priors = {'base': {}, 'samples': {}, 'migration' : {}, 'discoal' : {}}
+    priors = {'base': {}, 'samples': {}, 'migration' : {}, 'discoal' : {}, 'demography' : {}}
     
     # Process the [base] section for simple priors
     if 'base' in config:
@@ -239,6 +239,12 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
     else:
         priors['discoal'] = None
         
+    if 'demography' in config:
+        for key, value_str in config.items('demography'):
+            priors['demography'][key] = _parse_prior_value(value_str, safe_globals)
+    else:
+        priors['demography'] = None
+        
     return priors
 
 class BaseSimulator:
@@ -264,6 +270,7 @@ class BaseSimulator:
         sample_priors = priors['samples']
         self.migration_priors = priors['migration']
         self.discoal_priors = priors['discoal']
+        self.demography_priors = priors['demography']
 
         # --- Validate and store base priors ---
         required_base_keys = ['mu', 'r', 'l', 'ploidy']
@@ -305,8 +312,8 @@ class BaseSimulator:
             if not isinstance(pop_priors['n'], int):
                 raise TypeError(f"'n' for sample '{pop_name}' must be an integer > 0.")
             
-            if pop_priors['n'] <= 0:
-                raise TypeError(f"'n' for sample '{pop_name}' must be an integer > 0.")
+            if pop_priors['n'] < 0:
+                raise TypeError(f"'n' for sample '{pop_name}' must be an integer >= 0.")
             
             # If all checks pass, store the priors for this sample
             self.samples[pop_name] = pop_priors
@@ -353,7 +360,7 @@ class MSPrimeSimulator(BaseSimulator):
         
         if self.migration_priors:
             for key in self.migration_priors:
-                src, dst = key.split('_')
+                src, dst = key.split(',')
                 m = self.migration_priors[key]
                 
                 if isinstance(m, list):
@@ -364,6 +371,19 @@ class MSPrimeSimulator(BaseSimulator):
                     
                     for m_, t_ in zip(M, T):
                         demography.add_migration_rate_change(time = t_, source = src, dest = dst, rate = m_)
+        
+        if self.demography_priors:
+            for key in self.demography_priors:
+                c1, c2, p = key.split(',')
+                
+                T = self.demography_priors[key]
+                
+                if isinstance(m, float):
+                    demography.add_population_split(time = T, derived = [c1, c2], ancestral = p)
+                else:
+                    T = T.rvs(size = 1)[0]
+            
+                    demography.add_population_split(time = T, derived = [c1, c2], ancestral = p)
         
         demography.sort_events()
         
@@ -636,7 +656,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     
     # Create a temporary file path to pass to the function
-    config_path = 'config2.ini'
+    config_path = 'config.ini'
 
     sim = MSPrimeSimulator(config_path)
     ret = sim.simulate(verbose = True)
