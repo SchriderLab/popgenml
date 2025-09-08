@@ -287,12 +287,10 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
         return_graph (bool, optional): Placeholder (not currently used) for returning inferred ARG.
 
     Returns:
-        tuple:
-            Fs (np.ndarray): Tree sequence statistics (e.g., branch lengths or features from `.anc` file).
-            Ws (np.ndarray): Inferred weights or local ancestries.
-            snps (np.ndarray): SNP data extracted from the RELATE output.
-            sites (np.ndarray): Positions corresponding to SNPs, copied from input.
-            coal_times (np.ndarray): Inferred coalescent times from ancestral trees.
+        X (np.ndarray): node features for the inferred trees
+        edge_indices (np.ndarray): edge indices specifying the tree topology for each tree
+        snps (np.ndarray): The polymorphism data corresponding each tree (their span)
+        branch_lengths (np.ndarray): list of branch lengths
 
     Notes:
         - This function creates and cleans up a temporary directory to run RELATE.
@@ -321,10 +319,11 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
     
     map_file = ms_file.replace('.msOut', '.map')
     
+    # for constant recombination rate across the entire chrom
     ofile = open(map_file, 'w')
     ofile.write('pos COMBINED_rate Genetic_Map\n')
-    ofile.write('0 {} 0\n'.format(r * L))
-    ofile.write('{0} {1} {2}\n'.format(L, r * L, r * 10**8))
+    ofile.write('0 {} 0\n'.format(r * 10**8))
+    ofile.write('{0} {1} {2}\n'.format(L, r * 10**8, r * L * 100))
     ofile.close()
     
     haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))

@@ -137,6 +137,74 @@ def newick_to_tree(
     
     return tables.tree_sequence()
 
+def tree_to_FW(tree: tskit.Tree):
+    """
+    Calculates F and W matrices from a tskit Tree object.
+
+    This function is an adaptation of the original code that worked with
+    skbio.TreeNode. It computes matrices used in population genetics,
+    based on the coalescence times and topology of the tree.
+
+    Args:
+        tree: A tskit.Tree object representing a single coalescent tree.
+
+    Returns:
+        A tuple containing:
+        - F (np.ndarray): A symmetric matrix related to the number of lineages.
+        - W (np.ndarray): A vector of time interval lengths.
+        - s (np.ndarray): A sorted array of unique coalescence times, plus 0.
+    """
+
+    # Get the unique coalescence times (ages of internal nodes) sorted descending
+    coalescence_times = sorted(
+        list(set(tree.time(u) for u in tree.nodes() if tree.is_internal(u))),
+        reverse=True
+    )
+    s = np.array(coalescence_times + [0.0])
+
+    n = len([u for u in tree.nodes() if tree.is_leaf(u)])
+
+    # Initialize the F matrix
+    # The size is (n-1) x (n-1) corresponding to the n-1 coalescence events
+    F = np.zeros((n - 1, n - 1))
+
+    # Get start and end times for each branch in the tree.
+    # A branch is defined by a node and its parent. The time interval for a
+    # branch is (time of parent, time of node).
+    start_end = np.array([
+        (tree.time(tree.parent(u)), tree.time(u))
+        for u in tree.nodes() if tree.parent(u) != tskit.NULL
+    ])
+
+    # Fill the diagonal of F with the number of extant lineages [2, 3, ..., n]
+    F[np.diag_indices_from(F)] = np.arange(2, n + 1)
+
+    # Get indices for the lower triangle of F (excluding the diagonal)
+    i, j = np.tril_indices(F.shape[0], -1)
+
+    # Use NumPy broadcasting to efficiently count branches within time intervals
+    # For each (i, j) pair, the time interval is [s[j], s[i]] because s is reverse sorted.
+    start_end_b = np.tile(start_end, (len(i), 1, 1))
+    start_b = np.tile(s[j], (start_end.shape[0], 1)).T
+    end_b = np.tile(s[i], (start_end.shape[0], 1)).T
+
+    # Count how many branches are fully contained within each interval [start, end]
+    # A branch (parent_time, child_time) is contained if:
+    # parent_time >= start_time AND child_time <= end_time
+    # Note: The original code had the logic flipped: child_time <= end and parent_time >= start
+    # which is what is implemented here.
+    counts = np.sum((start_end_b[:, :, 1] <= end_b) & (start_end_b[:, :, 0] >= start_b), axis=-1)
+
+    # Populate the lower and upper triangles of F with the counts
+    F[i, j] = counts
+    F[j, i] = counts
+
+    # Calculate W vector using the lower triangle indices (including diagonal)
+    i, j = np.tril_indices(F.shape[0])
+    W = s[j] - s[i + 1]
+    
+    return F, W, s
+
 def tree_to_graph(tree, n = 200):
     """
     Convert a TSKit tree into a node feature array and edge list (graph representation).
