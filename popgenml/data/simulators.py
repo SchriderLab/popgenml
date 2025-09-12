@@ -20,6 +20,7 @@ from scipy import stats
 from typing import Dict, Union, Any
 from scipy.interpolate import interp1d
 import configparser
+import math
 
 import ast
 # scipy.stats._distn_infrastructure.rv_continuous and rv_discrete are the base classes
@@ -200,6 +201,7 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
     # Define a safe context for eval(), allowing access to 'stats' and custom classes.
     safe_globals = {
         'stats': stats,
+        'math' : math,
         'SplineHistory': SplineHistory,
         'BottleNeckHistory': BottleNeckHistory,
     }
@@ -656,7 +658,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     
     # Create a temporary file path to pass to the function
-    config_path = 'config.ini'
+    config_path = '../PopGenML/configs/mig_n4.ini'
 
     sim = MSPrimeSimulator(config_path)
     ret = sim.simulate(verbose = True)

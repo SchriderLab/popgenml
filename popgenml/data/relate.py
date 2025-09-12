@@ -266,7 +266,10 @@ def read_anc(anc_file, pop_sizes = (40,0)):
 
     return X, edge_indices, snps, branch_lengths
     
-def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
+def harmonic_number(n):
+    return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
+
+def relate(X, sites, n_samples, mu, r, L, N, diploid = False, verbose = False,
            return_graph = False):
     """
     Run RELATE (a genealogy-based inference method) on simulated or empirical binary haplotype data.
@@ -280,8 +283,8 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
         n_samples (int): Number of haploid samples (individuals * 2 for diploids).
         mu (float): Mutation rate per base pair.
         r (float): Recombination rate per base pair.
-        N (int): Effective population size.
         L (int): Total sequence length in base pairs.
+        N (int, optional): Effective population size.  If not provided, estimated using Wattersons theta calculated from the number of segregating sites and mu
         diploid (bool, optional): Whether the input samples are diploid (default is False).
         verbose (bool, optional): Whether to print RELATE's output to the terminal (default is False).
         return_graph (bool, optional): Placeholder (not currently used) for returning inferred ARG.
@@ -303,6 +306,9 @@ def relate(X, sites, n_samples, mu, r, N, L, diploid = False, verbose = False,
         - Supporting functions: `write_to_ms`, `read_anc`.
 
     """
+    if N is None:
+        N = (X.shape[1] / (4 * mu * L)) / harmonic_number(X.shape[0])
+    
     temp_dir = tempfile.TemporaryDirectory()
     
     odir = os.path.join(temp_dir.name, 'relate')

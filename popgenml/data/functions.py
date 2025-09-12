@@ -203,7 +203,7 @@ def tree_to_FW(tree: tskit.Tree):
     i, j = np.tril_indices(F.shape[0])
     W = s[j] - s[i + 1]
     
-    return F, W, s
+    return F[i, j], W, s
 
 def tree_to_graph(tree, n = 200):
     """
@@ -636,6 +636,41 @@ def seriate_spectral(x, C):
     x = x[ix,:]
     
     return x, ix
+
+def chamfer_distance_1d(set_a, set_b):
+    """
+    Calculates the 1D Chamfer distance between two sets of points.
+
+    Args:
+        set_a (np.ndarray): A 1D NumPy array representing the first set of points.
+        set_b (np.ndarray): A 1D NumPy array representing the second set of points.
+
+    Returns:
+        float: The 1D Chamfer distance between set_a and set_b.
+    """
+
+    # Ensure inputs are NumPy arrays
+    set_a = np.asarray(set_a).flatten()
+    set_b = np.asarray(set_b).flatten()
+
+    if len(set_a) == 0 or len(set_b) == 0:
+        return 0.0  # Or handle as an error, depending on desired behavior
+
+    # Calculate distances from set_a to set_b
+    dist_a_to_b = 0.0
+    for point_a in set_a:
+        min_dist = np.min(np.abs(point_a - set_b))
+        dist_a_to_b += min_dist
+
+    # Calculate distances from set_b to set_a
+    dist_b_to_a = 0.0
+    for point_b in set_b:
+        min_dist = np.min(np.abs(point_b - set_a))
+        dist_b_to_a += min_dist
+
+    # The Chamfer distance is the sum of these two unidirectional distances
+    chamfer_dist = dist_a_to_b + dist_b_to_a
+    return chamfer_dist
 
 
     
