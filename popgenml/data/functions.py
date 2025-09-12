@@ -256,7 +256,7 @@ def tree_to_graph(tree, n = 200):
     
     return np.array(X), edge_index
 
-def graph_to_tree(x, edges):
+def graph_to_tree(x, edges, offset = 0.01):
     """
     Convert node features and edges into a TSKit tree.
 
@@ -274,6 +274,14 @@ def graph_to_tree(x, edges):
     x_ = x[:,0]
     x_ = x_[x_ != 0.]
     t_coal = np.sort(x_)
+    
+    # push branch lengths by a small amount to avoid TSKit errors
+    diff = np.diff(t_coal)
+    ii = np.where(diff == 0.)[0]
+    
+    if len(ii) > 0:
+        for ii_ in ii:
+            t_coal[ii_ + 1] += offset
 
     tables = tskit.TableCollection(sequence_length = 1000)
     node_table = tables.nodes  # set up an alias, for efficiency
