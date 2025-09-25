@@ -160,14 +160,19 @@ class SplineHistory(History):
         n_points = np.random.choice(range(3, self.max_k + 1, 2))
         y_points = self.N.rvs(size=n_points)
         
-        t_points = [1] + sorted(list(np.exp(np.random.uniform(0., self.max_log_time, n_points - 1))))
-        # t_points = np.exp(np.linspace(0, self.max_log_time, n_points))
-
+        mi = np.min(y_points)
+        delta = np.max(y_points) - np.min(y_points)
+        
+        y_points = (y_points - mi) / delta
+        
+        t_points = [0.] + sorted(list(np.random.uniform(0., self.max_log_time, n_points - 1)))
+        max_t = np.max(t_points)
+                
         spline = interp1d(t_points, y_points, kind = self.kind)
-        t = np.exp(np.linspace(0, np.log(t_points[-1]), self.n_time_points))
+        t = np.linspace(0, t_points[-1], self.n_time_points)
         y = spline(t)
         
-        return t, y
+        return np.exp(t), y * delta + mi
     
 def _parse_prior_value(value_str: str, safe_globals: dict) -> Any:
     """Helper to parse a string from the config into a float, int, or distribution."""
@@ -661,10 +666,30 @@ if __name__ == "__main__":
     config_path = '../PopGenML/configs/mig_n4.ini'
 
     sim = MSPrimeSimulator(config_path)
-    ret = sim.simulate(verbose = True)
+    popsize = sim.samples['pop1']['Nt']
+    t, N = popsize.sample_curve()
     
-    print(ret['x'].shape)
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    for k in range(12):
+        # Sample and plot a history curve from the history object
+        print("\nSampling history for 'pop1'...")
+        t_curve, y_curve = popsize.sample_curve()
+        
+        ax.plot(np.log(t_curve), y_curve, label='Sampled Spline History for pop1', color='dodgerblue', linewidth=1)
+    
+    ax.set_title('Sampled Population Size History from Config', fontsize=16)
+    ax.set_xlabel('Time (in generations)', fontsize=12)
+    ax.set_ylabel('Effective Population Size (N_e)', fontsize=12)
+    ax.grid(True)
+    plt.tight_layout()
+    
+    print("\nDisplaying plot of the sampled population history...")
+    plt.show()
+    
     sys.exit()
+    
 
     """
     # 2. Create the prior object from the config file
