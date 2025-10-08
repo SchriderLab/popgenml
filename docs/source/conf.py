@@ -25,11 +25,12 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.autosummary',  # <-- Add this
     'sphinx_rtd_theme',
     'sphinx.ext.autodoc',
+    'myst_parser',
 ]
 
 templates_path = ['_templates']
 exclude_patterns = []
-autosummary_generate = True
+#autosummary_generate = True
 
 
 # -- Options for HTML output -------------------------------------------------
