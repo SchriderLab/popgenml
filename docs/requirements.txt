@@ -17,3 +17,4 @@ jupyter
 sphinx_rtd_theme
 networkx
 scikit-allel
+myst-parser
