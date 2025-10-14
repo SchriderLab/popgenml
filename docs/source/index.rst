@@ -14,6 +14,7 @@ Python package to assist with machine learning research in population genetics. 
    :caption: Contents:
    
    popgenml
+   config-files
 
 Indices and tables
 ==================
