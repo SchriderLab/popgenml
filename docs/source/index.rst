@@ -13,6 +13,7 @@ Python package to assist with machine learning research in population genetics. 
    :maxdepth: 2
    :caption: Contents:
    
+   introduction
    popgenml
    config-files
 
