@@ -308,7 +308,7 @@ def graph_to_tree(x, edges, offset = 0.01):
     
     return ts_tree
 
-def distmat_to_tree(D, metric = 'euclidean', method = 'single'):
+def distmat_to_tree(D, metric = 'euclidean', method = 'single', transform = None):
     """
     Construct a TSKit tree from a distance matrix using hierarchical clustering.
 
@@ -323,6 +323,9 @@ def distmat_to_tree(D, metric = 'euclidean', method = 'single'):
     Z = linkage(D, metric = metric, method = method)
     
     n = squareform(D).shape[0]
+    
+    if transform:
+        Z[:,2] = transform(Z[:,2])
     
     # parents
     ii = np.array(range(n, 2 * n - 1)).reshape(-1, 1)
