@@ -337,7 +337,7 @@ def distmat_to_tree(D, metric = 'euclidean', method = 'single', transform = None
     x = np.concatenate([x, np.expand_dims(Z[:,-2], -1) / 2.])
     
     # we use the distance divided by 2 as the branch length 
-    return graph_to_tree(x, edges)
+    return graph_to_tree(x, edges), Z
 
 def tree_to_distmat(tree, node_dict = None):
     """
