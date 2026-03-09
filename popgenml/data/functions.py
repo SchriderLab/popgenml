@@ -137,6 +137,46 @@ def newick_to_tree(
     
     return tables.tree_sequence()
 
+def compute_coalescent_inverses(times):
+    """
+    Computes the inverse scaled time differences and midpoints for a list of times.
+    
+    Args:
+        times (list or np.array): An increasing list of times [t0, t1, ...] 
+                                  of length n-1.
+    
+    Returns:
+        tuple: (inverse_scaled_diffs, midpoints)
+            - inverse_scaled_diffs: Array of ((n - k choose 2) * (t_{k+1} - t_k)) ** -1
+            - midpoints: Array of (t_{k+1} + t_k) / 2
+    """
+    t = np.array(times, dtype=float)
+    
+    # The list is defined as n - 1 long, so n is length + 1
+    n = len(t) + 1
+    
+    # Calculate differences (t_{k+1} - t_k)
+    # This reduces the array size by 1 (from n-1 items to n-2 items)
+    dt = t[1:] - t[:-1]
+    
+    # Calculate midpoints (t_{k+1} + t_k) / 2
+    midpoints = 0.5 * (t[1:] + t[:-1])
+    
+    # Create k values corresponding to the indices 0, 1, ..., len(dt)-1
+    k = np.arange(len(dt))
+    
+    # Calculate binomial coefficient (n - k choose 2)
+    # Formula: x(x-1)/2
+    lineages = n - k
+    binom = (lineages * (lineages - 1)) / 2.0
+    
+    # Compute the final inverse value
+    # We add a small epsilon or handle division by zero if t values are identical
+    with np.errstate(divide='ignore'):
+        inv_scaled_diffs = (binom * dt) ** -1
+        
+    return inv_scaled_diffs, midpoints
+
 def tree_to_FW(tree: tskit.Tree):
     """
     Calculates F and W matrices from a tskit Tree object.

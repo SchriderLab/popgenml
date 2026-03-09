@@ -131,7 +131,7 @@ class SplineHistory(History):
     The times for the control points is drawn from a uniform distribution from log(t) = 0 to log(t) = max_log_time.
     """
     def __init__(self, N: Distribution, max_k = 33, 
-                 min_k = 3, max_log_time = 11, n_time_points = 128, kind = 'linear'):
+                 min_k = 3, max_log_time = 11, n_time_points = 128):
         """
         Initializes the spline history generator.
 
@@ -144,7 +144,7 @@ class SplineHistory(History):
             n_time_points (int, optional): The number of points for the final time grid. Defaults to 128.
         """
         self.N = N
-        self.kind = kind
+        self.kind = 'linear'
         self.max_k = max_k
         self.max_log_time = max_log_time
         self.n_time_points = n_time_points
@@ -160,19 +160,13 @@ class SplineHistory(History):
         n_points = np.random.choice(range(3, self.max_k + 1, 2))
         y_points = self.N.rvs(size=n_points)
         
-        mi = np.min(y_points)
-        delta = np.max(y_points) - np.min(y_points)
-        
-        y_points = (y_points - mi) / delta
-        
-        t_points = [0.] + sorted(list(np.random.uniform(0., self.max_log_time, n_points - 1)))
-        max_t = np.max(t_points)
-                
+        t_points = [1] + sorted(list(np.exp(np.random.uniform(0., self.max_log_time, n_points - 1))))
+
         spline = interp1d(t_points, y_points, kind = self.kind)
-        t = np.linspace(0, t_points[-1], self.n_time_points)
+        t = np.exp(np.linspace(0, np.log(t_points[-1]), self.n_time_points))
         y = spline(t)
         
-        return np.exp(t), y * delta + mi
+        return t, y
     
 def _parse_prior_value(value_str: str, safe_globals: dict) -> Any:
     """Helper to parse a string from the config into a float, int, or distribution."""
@@ -354,7 +348,10 @@ class MSPrimeSimulator(BaseSimulator):
                     
                     for N1, T in Nt:
                         demography.add_population_parameters_change(time=T, population = pop_name, initial_size=N1)
-                else: 
+                elif isinstance(Nt, int) or isinstance(Nt, float):
+                    demography.add_population(name=pop_name, initial_size = Nt)
+                else:
+                    
                     t, N = Nt.sample_curve()
                     
                     demography.add_population(name=pop_name, initial_size = N[0])
@@ -663,7 +660,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     
     # Create a temporary file path to pass to the function
-    config_path = '../PopGenML/configs/mig_n4.ini'
+    config_path = '../PopGenML/configs/mig/mig_n4.ini'
 
     sim = MSPrimeSimulator(config_path)
     popsize = sim.samples['pop1']['Nt']

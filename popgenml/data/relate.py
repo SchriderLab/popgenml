@@ -17,7 +17,7 @@ rscript_path = 'Rscript {}'.format(os.path.join(resource_filename('popgenml', 's
                                                 ))
 
 rcmd = 'cd {3} && ' + rscript_path + ' {0} {1} {2}'
-relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode All -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
+relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode {7} -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
 
 def make_FW_rep(root, sample_sizes):
     if len(sample_sizes) > 1:
@@ -269,8 +269,8 @@ def read_anc(anc_file, pop_sizes = (40,0)):
 def harmonic_number(n):
     return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
 
-def relate(X, sites, n_samples, mu, r, L, N, diploid = False, verbose = False,
-           return_graph = False):
+def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = False,
+           return_graph = False, mode = 'All', odir = None):
     """
     Run RELATE (a genealogy-based inference method) on simulated or empirical binary haplotype data.
 
@@ -311,8 +311,11 @@ def relate(X, sites, n_samples, mu, r, L, N, diploid = False, verbose = False,
     
     temp_dir = tempfile.TemporaryDirectory()
     
+    if odir is not None:
+        temp_dir.name = odir
+    
     odir = os.path.join(temp_dir.name, 'relate')
-    os.mkdir(odir)
+    os.system('mkdir -p {}'.format(odir))
     
     ms_file = os.path.join(temp_dir.name, 'sim.msOut')
     write_to_ms(ms_file, X, sites, [0])
@@ -360,16 +363,20 @@ def relate(X, sites, n_samples, mu, r, L, N, diploid = False, verbose = False,
     
     cmd_ = relate_cmd.format(mu, 2 * N, haps[0], 
                              samples[0], os.path.abspath(map_file), 
-                             ofile, odir)
-    
+                             ofile, odir, mode)
+    print(cmd_)
     if not verbose:
         cmd_ += ' >/dev/null 2>&1'
     
     os.system(cmd_)
     
-    anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-    X, edge_indices, snps, branch_lengths = read_anc(anc_file, pop_sizes = (n_samples, 0))
     
-    temp_dir.cleanup()
-
-    return X, edge_indices, snps, branch_lengths
+    if mode == "All":
+        anc_file = os.path.join(odir, '{}.anc'.format(ofile))
+        X, edge_indices, snps, branch_lengths = read_anc(anc_file, pop_sizes = (n_samples, 0))
+        
+        temp_dir.cleanup()
+    
+        return X, edge_indices, snps, branch_lengths
+    else:
+        return cmd_
