@@ -241,10 +241,6 @@ def read_anc(anc_file, pop_sizes = (40,0)):
         
     X = []
     edge_indices = []
-    
-    Fs = []
-    Ws = []
-    
     branch_lengths = []
         
     snps = []
@@ -258,10 +254,7 @@ def read_anc(anc_file, pop_sizes = (40,0)):
         
         X.append(x)
         edge_indices.append(edges)
-            
-    Fs = np.array(Fs)
-    Ws = np.array(Ws)
-    
+
     anc_file.close()
 
     return X, edge_indices, snps, branch_lengths
@@ -364,7 +357,6 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     cmd_ = relate_cmd.format(mu, 2 * N, haps[0], 
                              samples[0], os.path.abspath(map_file), 
                              ofile, odir, mode)
-    print(cmd_)
     if not verbose:
         cmd_ += ' >/dev/null 2>&1'
     
@@ -373,9 +365,11 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     
     if mode == "All":
         anc_file = os.path.join(odir, '{}.anc'.format(ofile))
+        
         X, edge_indices, snps, branch_lengths = read_anc(anc_file, pop_sizes = (n_samples, 0))
         
-        temp_dir.cleanup()
+        if odir is None:
+            temp_dir.cleanup()
     
         return X, edge_indices, snps, branch_lengths
     else:
