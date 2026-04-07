@@ -1,6 +1,5 @@
 import numpy as np
 
-from seriate import seriate
 from scipy.spatial.distance import pdist, cdist, squareform
 from scipy.optimize import linear_sum_assignment
 
@@ -473,6 +472,8 @@ def format_matrix(x, pos, pop_sizes, y = None,
             - np.ndarray: Modified site positions of shape (n_sites,).
             - np.ndarray or None: Modified label/segmentation data if provided.
     """
+    from seriate import seriate
+    
     if len(pop_sizes) == 1:
         s0 = pop_sizes[0]
         s1 = 0
