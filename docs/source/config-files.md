@@ -87,8 +87,9 @@ The key defines the direction of migration. A key of popA_popB specifies the mig
 This section is for discoal specific arguments.
 
 + **args**: 
-    + Type: str
-    + Example: ``` '' ```
+    + Type: str with constant args passed to discoal
+    + Example:
+      ``` '-Pf 0.0 0.05 -Pc 0.5 1.0 -Pu 0.0 0.01 -ws 0' ```
 
 ## Full Examples
 
