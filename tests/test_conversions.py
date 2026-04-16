@@ -3,12 +3,14 @@
 For testing the conversion functions between TSKit Tree object, distance matrices, and node/edge represenations
 """
 
-from popgenml.data.simulators import SimpleCoal
+from popgenml.data.simulators import MSPrimeSimulator
 from popgenml.data.functions import tree_to_graph, graph_to_tree, tree_to_distmat, distmat_to_tree
 import numpy as np
 
 # Run a coalescent simulation and get the first tree
-simulator = SimpleCoal()
+config_path = '../PopGenML/configs/mig/mig_n4.ini'
+
+simulator = MSPrimeSimulator(config_path)
 ret = simulator.simulate()
 
 ts = ret['ts']
@@ -39,7 +41,7 @@ print('success!')
 print('testing tree to distance matrix and back...')
 
 D = tree_to_distmat(tree)
-ts_tree = distmat_to_tree(D)
+ts_tree, _ = distmat_to_tree(D)
 
 times_ = sorted([ts_tree.time(u) for u in ts_tree.nodes()])
 times_ = [u for u in times_ if u > 0]
