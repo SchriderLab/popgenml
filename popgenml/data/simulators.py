@@ -253,7 +253,7 @@ class BaseSimulator:
     A simulator that holds base parameters and validated sample population priors,
     initialized directly from a configuration file.
     """
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, seed = None):
         """
         Initializes the BaseSimulator from a configuration file.
 
@@ -265,6 +265,8 @@ class BaseSimulator:
             TypeError: If a value has an incorrect type.
             ValueError: If a value is out of the allowed range (e.g., ploidy).
         """
+        self.seed = None
+        
         # --- Create priors from the config file ---
         priors = create_prior_from_config(config_path)
         base_priors = priors['base']
@@ -318,6 +320,8 @@ class BaseSimulator:
             
             # If all checks pass, store the priors for this sample
             self.samples[pop_name] = pop_priors
+    def set_seed(self, seed):
+        self.seed = seed
             
 class MSPrimeSimulator(BaseSimulator):
     def __init__(self, config_file, mutation_model = msprime.BinaryMutationModel()):
@@ -412,6 +416,7 @@ class MSPrimeSimulator(BaseSimulator):
             recombination_rate = r,
             ploidy = self.ploidy,
             demography = self.demography,
+            random_seed = self.seed
         )
         
         return self.mutate_and_return_(ts)
@@ -425,7 +430,7 @@ class MSPrimeSimulator(BaseSimulator):
             mu = self.mu.rvs(size = 1)[0]
         
         # simulate mutations, binary discrete model
-        mutated_ts = msprime.sim_mutations(ts, rate=mu, model=msprime.BinaryMutationModel())
+        mutated_ts = msprime.sim_mutations(ts, rate=mu, model=msprime.BinaryMutationModel(), random_seed = self.seed)
         
         X = mutated_ts.genotype_matrix()
         X[X > 1] = 1
