@@ -2,11 +2,95 @@
 import numpy as np
 import inspect
 import warnings
+from popgenml.data.functions import seriate_spectral
+from popgenml.data.functions import tree_to_distmat
+from scipy.spatial.distance import pdist, squareform
+
+import tskit
+from typing import Any, Callable
+
+class TSTransform:
+    """
+    Base transform class to convert a tskit tree sequence into a tensor representation.
+    """
+    def __init__(self):
+        # Base initialization logic (if any is needed across all transforms later)
+        pass
+
+    def __call__(self, ts: tskit.TreeSequence) -> np.ndarray:
+        """
+        Transforms the input tree sequence into a tensor.
+        Subclasses must override this method.
+        """
+        raise NotImplementedError("Subclasses must implement the __call__ method.")
+
+class SiteDistanceMatrixTransform(TSTransform):
+    """
+    Transforms a tree sequence into a tensor of shape (L, n choose 2), 
+    where L is the number of sites, containing the condensed distance matrix 
+    of the tree that covers each site.
+    """
+    def __init__(self):
+        super().__init__() 
+
+    def __call__(self, ts: tskit.TreeSequence) -> np.ndarray:
+        if not isinstance(ts, tskit.TreeSequence):
+            raise TypeError(f"Expected tskit.TreeSequence, got {type(ts)}")
+
+        L = ts.num_sites
+        n = ts.num_samples
+        n_choose_2 = n * (n - 1) // 2
+        
+        out_tensor = np.zeros((L, n_choose_2), dtype=np.float32)
+        
+        for tree in ts.trees():
+            sites_in_tree = list(tree.sites())
+            
+            if not sites_in_tree:
+                continue
+                
+            # Directly call the external tree_to_distmat function
+            distmat = tree_to_distmat(tree)
+            
+            for site in sites_in_tree:
+                out_tensor[site.id] = distmat
+                
+        return out_tensor
 
 class AlignmentTransform:
     """Base class for alignment transformations."""
     def __call__(self, matrix, positions, L):
         raise NotImplementedError("Subclasses must implement __call__")
+
+class RelateTreeSequenceTransform(AlignmentTransform):
+    def __init__(self):
+        return
+
+class FastSeriate(AlignmentTransform):
+    def __init__(self, dist = 'cosine'):
+        self.dist = dist
+    
+    def __call__(self, matrix, positions, L):
+        D = squareform(pdist(matrix, metric = self.dist))
+        
+        matrix, _ = seriate_spectral(matrix, D)
+        
+        return matrix, positions, L
+
+class RandomSampleShuffle(AlignmentTransform):
+    """
+    Randomly shuffles the samples (rows) of the (n, l) alignment matrix.
+    """
+    def __call__(self, matrix, positions, L):
+        n, l = matrix.shape
+        
+        # Generate a random permutation of row indices (0 to n-1)
+        shuffled_indices = np.random.permutation(n)
+        
+        # Apply the permutation to the matrix rows
+        shuffled_matrix = matrix[shuffled_indices, :]
+        
+        return shuffled_matrix, positions, L
 
 class RandomCrop(AlignmentTransform):
     """
@@ -108,8 +192,7 @@ class WindowedStats(AlignmentTransform):
     def __call__(self, matrix, positions, L):
         n_haps, l_sites = matrix.shape
         
-        # Convert length from Mb (megabases) to base pairs
-        L_bp = L * 1e6
+        L_bp = L
         
         # Convert relative floating positions [0, 1] to integer base pairs
         pos_bp = (positions * L_bp).astype(int)

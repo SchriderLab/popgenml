@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from popgenml.data.io_ import read_slim
 from popgenml.data.functions import newick_to_tree
+from popgenml.data.distributions import UniformFloatDiscrete, TruncatedExponential
 
 import msprime
 import numpy as np
@@ -203,6 +204,8 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
         'math' : math,
         'SplineHistory': SplineHistory,
         'BottleNeckHistory': BottleNeckHistory,
+        'UniformFloatDiscrete' : UniformFloatDiscrete,
+        'TruncatedExponential' : TruncatedExponential
     }
 
     priors = {'base': {}, 'samples': {}, 'migration' : {}, 'discoal' : {}, 'demography' : {}}

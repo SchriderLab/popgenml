@@ -10,6 +10,51 @@ import itertools
 import tskit
 import newick
 
+def flip(arr):
+    """
+    Flips columns of a binary array based on their sum.
+
+    - If column sum > n/2, the column is flipped (1 -> 0, 0 -> 1).
+    - If column sum == n/2, the column is flipped with 0.5 probability.
+    - If column sum < n/2, the column is not changed.
+
+    Args:
+        arr: A 2D (n, l) NumPy array of binary values (0s and 1s).
+
+    Returns:
+        A new 2D (n, l) NumPy array with the columns conditionally flipped.
+    """
+    # Create a copy to avoid modifying the original array
+    arr_flipped = arr.copy()
+    
+    n, l = arr_flipped.shape
+    threshold = n // 2
+
+    # 1. Calculate the sum of each column
+    col_sums = arr_flipped.sum(axis=0)  # Shape (l,)
+
+    # 2. Condition 1: Find columns where sum < threshold
+    mask_less_than = col_sums > threshold
+
+    # 3. Condition 2: Find columns where sum == threshold
+    mask_equal = col_sums == threshold
+
+    # 4. For 'equal' columns, create a 50% probability mask
+    # We generate random numbers for all columns, but only use them
+    # where mask_equal is True.
+    random_probs = np.random.rand(l)
+    mask_random_flip = (mask_equal) & (random_probs < 0.5)
+
+    # 5. Combine the masks: flip if (sum < threshold) OR (sum == threshold and random < 0.5)
+    total_flip_mask = mask_less_than | mask_random_flip
+
+    # 6. Apply the flip
+    # total_flip_mask is 1D (l,), but NumPy broadcasting
+    # allows it to select the correct columns in the 2D array.
+    arr_flipped[:, total_flip_mask] = 1 - arr_flipped[:, total_flip_mask]
+
+    return arr_flipped
+
 def newick_to_tree(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None, multiplier = 1.
 ) -> tskit.TreeSequence:
