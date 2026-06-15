@@ -8,7 +8,6 @@ import time
 import copy
 import glob
 import numpy as np
-from skbio import read
 from skbio.tree import TreeNode
 from pkg_resources import resource_filename
 
