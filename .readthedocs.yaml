@@ -1,7 +1,6 @@
 # Read the Docs configuration file for Sphinx projects
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
 
-# Required
 version: 2
 
 # Set the OS, Python version and other tools you might need
@@ -12,10 +11,14 @@ build:
   jobs:
     pre_build:
       - mkdir -p _static
-      - pip install -e .
+      # Removed 'pip install -e .' from here
 
 python:
   install:
+    # 1. Install the actual package so Sphinx can find popgenml
+    - method: pip
+      path: .
+    # 2. Install the documentation-specific requirements
     - requirements: docs/requirements.txt
 
 sphinx:
