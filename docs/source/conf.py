@@ -48,7 +48,6 @@ html_static_path = ['_static']
 autodoc_mock_imports = [
     "numpy",
     "skbio",
-    "pkg_resources",
     "msprime",
     "tskit",
     "matplotlib",
