@@ -43,3 +43,22 @@ exclude_patterns = []
 
 html_theme = 'classic'
 html_static_path = ['_static']
+
+autodoc_mock_imports = [
+    "numpy",
+    "skbio",
+    "pkg_resources",
+    "msprime",
+    "tskit",
+    "matplotlib",
+    "pandas",
+    "sklearn",       # scikit-learn
+    "scipy",
+    "networkx",
+    "allel",         # scikit-allel
+    "demesdraw",
+    "seaborn",
+    "tqdm",
+    "seriate",
+    "newick"
+]
