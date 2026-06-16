@@ -27,7 +27,7 @@ Functions / Conversions
     popgenml.data.functions.newick_to_tree
     popgenml.data.functions.tree_to_graph
     popgenml.data.functions.graph_to_tree
-    popgenml.data.function.distmat_to_tree
+    popgenml.data.functions.distmat_to_tree
     popgenml.data.functions.tree_to_distmat
     popgenml.data.functions.pad_sequences
     popgenml.data.functions.to_unique
