@@ -50,10 +50,17 @@ autodoc_mock_imports = [
     "tskit",
     "matplotlib",
     "pandas",
-    "sklearn",       # scikit-learn
+    "sklearn",       
     "scipy",
+    "scipy.spatial",           # Add this
+    "scipy.spatial.distance",  # Add this
+    "scipy.optimize",          # Add this
+    "scipy.sparse",            # Add this
+    "scipy.sparse.linalg",     # Add this
+    "scipy.cluster",           # Add this
+    "scipy.cluster.hierarchy", # Add this
     "networkx",
-    "allel",         # scikit-allel
+    "allel",         
     "demesdraw",
     "seaborn",
     "tqdm",
