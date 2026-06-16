@@ -11,14 +11,10 @@ build:
   jobs:
     pre_build:
       - mkdir -p _static
-      # Removed 'pip install -e .' from here
-
+      - pip install -e .
+    
 python:
   install:
-    # 1. Install the actual package so Sphinx can find popgenml
-    - method: pip
-      path: .
-    # 2. Install the documentation-specific requirements
     - requirements: docs/requirements.txt
 
 sphinx:
