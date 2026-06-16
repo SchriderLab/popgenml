@@ -9,11 +9,12 @@ import copy
 import glob
 import numpy as np
 from skbio.tree import TreeNode
-from pkg_resources import resource_filename
+import importlib.resources
 
 RELATE_PATH = 'Relate'
-rscript_path = 'Rscript {}'.format(os.path.join(resource_filename('popgenml', 'scripts'), 'ms2haps.R'
-                                                ))
+
+# Grab the file path from the package and convert the Traversable object to a string
+rscript_path = str(importlib.resources.files('popgenml').joinpath('scripts', 'ms2haps.R'))
 
 rcmd = 'cd {3} && ' + rscript_path + ' {0} {1} {2}'
 relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode {7} -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
