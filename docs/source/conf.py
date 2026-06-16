@@ -11,6 +11,15 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../..'))
 
+try:
+    import popgenml.data.functions
+    print("✅ SUCCESS: popgenml.data.functions imported perfectly!")
+except Exception as e:
+    import traceback
+    print("\n🚨 FATAL IMPORT ERROR IN FUNCTIONS.PY 🚨")
+    traceback.print_exc()
+    print("🚨 ---------------------------------- 🚨\n")
+
 project = 'popgenml'
 copyright = '2025, Dylan Ray'
 author = 'Dylan Ray'
