@@ -11,8 +11,6 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../..'))
 
-from popgenml.data.stats import *
-
 project = 'popgenml'
 copyright = '2025, Dylan Ray'
 author = 'Dylan Ray'
