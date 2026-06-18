@@ -1,21 +1,12 @@
 # -*- coding: utf-8 -*-
-from popgenml.data.io_ import read_slim
 from popgenml.data.functions import newick_to_tree
 from popgenml.data.distributions import UniformFloatDiscrete, TruncatedExponential
 
 import msprime
 import numpy as np
-import os
 
-import logging
-import random
 import subprocess
-
-from numpy.polynomial.chebyshev import Chebyshev
-from pkg_resources import resource_filename
 import re
-
-import pickle
 
 from scipy import stats
 from typing import Dict, Union, Any
@@ -251,24 +242,36 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
         
     return priors
 
+import msprime
+import numpy as np
+import subprocess
+import re
+
+# Note: create_prior_from_config and newick_to_tree are assumed to be defined elsewhere in your module.
+
 class BaseSimulator:
     """
-    A simulator that holds base parameters and validated sample population priors,
-    initialized directly from a configuration file.
+    A base simulator class that loads parameters and validated sample population priors
+    directly from a configuration file.
+
+    This class serves as the foundation for specific simulation engines (like msprime 
+    or discoal), handling the boilerplate of parsing demographics, sample sizes, and 
+    mutation/recombination rates.
     """
-    def __init__(self, config_path: str, seed = None):
+    def __init__(self, config_path: str, seed=None):
         """
         Initializes the BaseSimulator from a configuration file.
 
         Args:
             config_path (str): The path to the .ini configuration file.
+            seed (int, optional): Random seed for reproducibility. Defaults to None.
 
         Raises:
-            KeyError: If a required key is missing.
-            TypeError: If a value has an incorrect type.
-            ValueError: If a value is out of the allowed range (e.g., ploidy).
+            KeyError: If a required key (e.g., 'mu', 'r', 'l', 'ploidy') is missing.
+            TypeError: If a value has an incorrect type (e.g., L or ploidy not integers).
+            ValueError: If a value is out of the allowed range (e.g., ploidy not in [1, 2]).
         """
-        self.seed = None
+        self.seed = seed
         
         # --- Create priors from the config file ---
         priors = create_prior_from_config(config_path)
@@ -292,83 +295,112 @@ class BaseSimulator:
         if not isinstance(ploidy_val, int):
             raise TypeError(f"The value for 'ploidy' must be an integer, but got {type(ploidy_val)}.")
 
-        if not ploidy_val in [1, 2]:
+        if ploidy_val not in [1, 2]:
             raise ValueError(f"The value for 'ploidy' given ({ploidy_val}) is not in [1, 2]...")
     
         self.mu = base_priors['mu']
         self.r = base_priors['r']
         self.L = L_val
-        self.ploidy = base_priors['ploidy']
+        self.ploidy = ploidy_val
         
         # --- Validate and store sample priors ---
         self.samples = {}
         required_sample_keys = ['n']
         
         for pop_name, pop_priors in sample_priors.items():            
-            # Check for required keys
+            # Ensure basic required keys exist for each population
             for key in required_sample_keys:
                 if key not in pop_priors:
                     raise KeyError(f"Required key '{key}' not found in priors for sample '{pop_name}'.")
             
-            # Check for N0 or Nt
+            # Ensure population size information is provided (either current N0 or trajectory Nt)
             if 'N0' not in pop_priors and 'Nt' not in pop_priors:
                 raise KeyError(f"Either 'N0' or 'Nt' must be specified for sample '{pop_name}'.")
 
-            # Validate types and values
+            # Validate that sample size 'n' is a valid positive integer
             if not isinstance(pop_priors['n'], int):
                 raise TypeError(f"'n' for sample '{pop_name}' must be an integer > 0.")
-            
             if pop_priors['n'] < 0:
                 raise TypeError(f"'n' for sample '{pop_name}' must be an integer >= 0.")
             
-            # If all checks pass, store the priors for this sample
+            # Store validated priors
             self.samples[pop_name] = pop_priors
-    def set_seed(self, seed):
+
+    def set_seed(self, seed: int):
+        """
+        Sets the random seed for the simulator.
+
+        Args:
+            seed (int): The seed value to ensure reproducible simulations.
+        """
         self.seed = seed
             
+
 class MSPrimeSimulator(BaseSimulator):
-    def __init__(self, config_file, mutation_model = msprime.BinaryMutationModel()):
+    """
+    A simulator engine utilizing the `msprime` library for coalescent simulation.
+    
+    Inherits from BaseSimulator to parse parameters, and implements msprime-specific
+    methods to build demography, simulate ancestry, and apply mutations.
+    """
+    def __init__(self, config_file: str, mutation_model=msprime.BinaryMutationModel()):
+        """
+        Initializes the MSPrimeSimulator.
+
+        Args:
+            config_file (str): Path to the configuration file.
+            mutation_model (msprime.MutationModel, optional): The mutation model to apply. 
+                Defaults to msprime.BinaryMutationModel().
+        """
         super().__init__(config_file)
-        
         self.mutation_model = mutation_model
         
-    def make_demography(self):
+    def make_demography(self) -> msprime.Demography:
+        """
+        Constructs an msprime.Demography object based on the parsed configuration priors.
+
+        Returns:
+            msprime.Demography: The assembled demographic model containing populations,
+                size changes, splits, and migration events.
+                
+        Raises:
+            ValueError: If a population is missing both 'Nt' and 'N0' definitions.
+        """
         demography = msprime.Demography()
         
+        # 1. Add populations and size changes
         for pop_name in self.samples.keys():
-            if 'N0' in self.samples[pop_name].keys() and (not 'Nt' in self.samples[pop_name].keys()):
-                # we expect this to be a positive float or integer
+            if 'N0' in self.samples[pop_name].keys() and ('Nt' not in self.samples[pop_name].keys()):
                 N0 = self.samples[pop_name]['N0']
+                # If N0 is fixed
                 if isinstance(N0, (float, int)):
-                    demography.add_population(name=pop_name, initial_size = N0)
+                    demography.add_population(name=pop_name, initial_size=N0)
+                # If N0 is a distribution (random variable)
                 else:
-                    N0 = N0.rvs(size = 1)[0]
-                    
-                    demography.add_population(name=pop_name, initial_size = N0)
+                    N0 = N0.rvs(size=1)[0]
+                    demography.add_population(name=pop_name, initial_size=N0)
             
             elif 'Nt' in self.samples[pop_name].keys():
                 Nt = self.samples[pop_name]['Nt']
                 
-                # list of tuples
+                # If Nt is a discrete list of (Size, Time) tuples
                 if isinstance(Nt, list):
-                    demography.add_population(name=pop_name, initial_size = self.samples[pop_name]['Nt'][0])
-                    
+                    demography.add_population(name=pop_name, initial_size=self.samples[pop_name]['Nt'][0])
                     for N1, T in Nt:
-                        demography.add_population_parameters_change(time=T, population = pop_name, initial_size=N1)
-                elif isinstance(Nt, int) or isinstance(Nt, float):
-                    demography.add_population(name=pop_name, initial_size = Nt)
+                        demography.add_population_parameters_change(time=T, population=pop_name, initial_size=N1)
+                # If Nt is a single fixed historical size
+                elif isinstance(Nt, (int, float)):
+                    demography.add_population(name=pop_name, initial_size=Nt)
+                # If Nt is a continuous curve distribution
                 else:
-                    
                     t, N = Nt.sample_curve()
-                    
-                    demography.add_population(name=pop_name, initial_size = N[0])
-                    
+                    demography.add_population(name=pop_name, initial_size=N[0])
                     for N1, T in zip(N, t):
-                        demography.add_population_parameters_change(time=T, population = pop_name, initial_size=N1)
+                        demography.add_population_parameters_change(time=T, population=pop_name, initial_size=N1)
             else:
                 raise ValueError("All simulated populations must have a key 'Nt' or 'N0'")
         
-        
+        # 2. Add migration events
         if self.migration_priors:
             for key in self.migration_priors:
                 src, dst = key.split(',')
@@ -376,71 +408,97 @@ class MSPrimeSimulator(BaseSimulator):
                 
                 if isinstance(m, list):
                     for m_, t_ in m:
-                        demography.add_migration_rate_change(time = t_, source = src, dest = dst, rate = m_)
+                        demography.add_migration_rate_change(time=t_, source=src, dest=dst, rate=m_)
                 else:
                     T, M = m.sample_curve()
-                    
                     for m_, t_ in zip(M, T):
-                        demography.add_migration_rate_change(time = t_, source = src, dest = dst, rate = m_)
+                        demography.add_migration_rate_change(time=t_, source=src, dest=dst, rate=m_)
         
+        # 3. Add population splits (demography priors)
         if self.demography_priors:
             for key in self.demography_priors:
                 c1, c2, p = key.split(',')
-                
                 T = self.demography_priors[key]
                 
-                if isinstance(m, float):
-                    demography.add_population_split(time = T, derived = [c1, c2], ancestral = p)
+                # Check if T is a fixed float or a random variable
+                if isinstance(T, float): # Fixed original bug: replaced isinstance(m, float) with T
+                    demography.add_population_split(time=T, derived=[c1, c2], ancestral=p)
                 else:
-                    T = T.rvs(size = 1)[0]
-            
-                    demography.add_population_split(time = T, derived = [c1, c2], ancestral = p)
+                    T = T.rvs(size=1)[0]
+                    demography.add_population_split(time=T, derived=[c1, c2], ancestral=p)
         
+        # Sort events chronologically to satisfy msprime requirements
         demography.sort_events()
-        
         return demography
                     
-    def simulate(self, verbose = False):
+    def simulate(self, verbose: bool = False) -> dict:
+        """
+        Executes the coalescent ancestry simulation using msprime.
+
+        Args:
+            verbose (bool, optional): If True, prints additional logging. Defaults to False.
+
+        Returns:
+            dict: A dictionary containing the genotype matrix ('x'), variant positions ('pos'), 
+                and the msprime tree sequence ('ts').
+        """
         self.demography = self.make_demography()
                 
-        samples = dict()
+        # Prepare sample sizes
+        samples = {}
         for pop in self.samples.keys():
             samples[pop] = self.samples[pop]['n']
         
+        # Resolve recombination rate (fixed or sampled)
         if isinstance(self.r, float):
             r = self.r
         else:
-            r = self.r.rvs(size = 1)[0]
+            r = self.r.rvs(size=1)[0]
         
-        # simulate ancestry
+        # Simulate ancestry (trees)
         ts = msprime.sim_ancestry(
-            samples = samples,
-            sequence_length = self.L,
-            recombination_rate = r,
-            ploidy = self.ploidy,
-            demography = self.demography,
-            random_seed = self.seed
+            samples=samples,
+            sequence_length=self.L,
+            recombination_rate=r,
+            ploidy=self.ploidy,
+            demography=self.demography,
+            random_seed=self.seed
         )
         
         return self.mutate_and_return_(ts)
     
-    def mutate_and_return_(self, ts):
-        result = dict()
+    def mutate_and_return_(self, ts: msprime.TreeSequence) -> dict:
+        """
+        Applies mutations to the generated tree sequence and formats the output.
+
+        Args:
+            ts (msprime.TreeSequence): The unmutated tree sequence from sim_ancestry.
+
+        Returns:
+            dict: The simulation results containing:
+                - 'x' (np.ndarray): The genotype matrix (sites x samples).
+                - 'pos' (np.ndarray): Scaled variant positions (0 to 1).
+                - 'ts' (msprime.TreeSequence): The fully mutated tree sequence.
+        """
+        result = {}
         
+        # Resolve mutation rate (fixed or sampled)
         if isinstance(self.mu, float):
             mu = self.mu
         else:
-            mu = self.mu.rvs(size = 1)[0]
+            mu = self.mu.rvs(size=1)[0]
         
-        # simulate mutations, binary discrete model
-        mutated_ts = msprime.sim_mutations(ts, rate=mu, model=msprime.BinaryMutationModel(), random_seed = self.seed)
+        # Simulate mutations using a binary discrete model
+        mutated_ts = msprime.sim_mutations(ts, rate=mu, model=self.mutation_model, random_seed=self.seed)
         
+        # Extract and format genotype matrix
         X = mutated_ts.genotype_matrix()
-        X[X > 1] = 1
+        X[X > 1] = 1 # Enforce binary constraints for multiple hits
         X = X.T
 
+        # Extract and scale positions relative to sequence length L
         sites = [u.position for u in list(mutated_ts.sites())]
-        sites = np.array(sites) / self.L # scale from 0 to 1
+        sites = np.array(sites) / self.L 
         
         result['x'] = X
         result['pos'] = sites
@@ -448,131 +506,143 @@ class MSPrimeSimulator(BaseSimulator):
         
         return result
 
+
 class DiscoalSimulator(BaseSimulator):
-    def __init__(self, config_file):
+    """
+    A simulator engine utilizing the `discoal` command-line tool, typically used 
+    for simulating selective sweeps.
+
+    Inherits from BaseSimulator. Converts demographic and selection priors into 
+    a command string, executes it via a subprocess, and parses the custom output.
+    """
+    def __init__(self, config_file: str):
+        """
+        Initializes the DiscoalSimulator and parses discoal-specific parameters.
+
+        Args:
+            config_file (str): Path to the configuration file.
+        """
         super().__init__(config_file)
         
         if self.discoal_priors is not None:
-            # selection coefficient
-            if 's' in self.discoal_priors.keys():
-                self.s = self.discoal_priors['s']
-            else:
-                self.s = None
-        
-            # prior on location of selection
-            if 'x' in self.discoal_priors.keys():
-                self.x = self.discoal_priors['x']
-            else:
-                self.x = None
-                
-            # other args passed to discoal
-            if 'args' in self.discoal_priors.keys():
-                self.args = self.discoal_priors['args']
-            else:
-                self.args = None
+            # Selection coefficient
+            self.s = self.discoal_priors.get('s', None)
+            # Prior on location of selection within the sequence
+            self.x = self.discoal_priors.get('x', None)
+            # Additional raw arguments passed directly to the discoal CLI
+            self.args = self.discoal_priors.get('args', None)
         else:
             self.s = None
             self.x = None
             self.args = None
                     
-    def simulate(self, verbose = False):
+    def simulate(self, verbose: bool = False) -> dict:
+        """
+        Builds the discoal command string and triggers the simulation.
+
+        Args:
+            verbose (bool, optional): If True, prints the raw discoal command. Defaults to False.
+
+        Returns:
+            dict: The parsed results from the discoal output.
+        """
         pops = []
         
+        # 1. Parse sample priors to gather population histories
         for ix, pop_name in enumerate(sorted(self.samples.keys())):
-            if 'N0' in self.samples[pop_name].keys() and (not 'Nt' in self.samples[pop_name].keys()):
-                # we expect this to be a positive float or integer
+            if 'N0' in self.samples[pop_name].keys() and ('Nt' not in self.samples[pop_name].keys()):
                 N0 = self.samples[pop_name]['N0']
                 if not isinstance(N0, (float, int)):
-                    N0 = N0.rvs(size = 1)[0]
-                    
+                    N0 = N0.rvs(size=1)[0]
                 Nt = None
             elif 'Nt' in self.samples[pop_name].keys():
                 Nt = self.samples[pop_name]['Nt']
-                
-                # list of tuples
                 if not isinstance(Nt, list):
                     t, N = Nt.sample_curve()
-                    
                     Nt = list(zip(N, t))
-        
                 N0 = Nt[0][0]
             
             n = self.samples[pop_name]['n']
-            
             if self.ploidy == 2:
                 n *= 2
             
             pops.append((N0, Nt, n))
         
+        # Use the first population's N0 as the reference size for scaling
         N0 = pops[0][0]
         self.N = N0
         
-        if isinstance(self.r, float):
-            r = self.r
-        else:
-            r = self.r.rvs(size = 1)[0]
+        # Resolve recombination and mutation rates
+        r = self.r if isinstance(self.r, float) else self.r.rvs(size=1)[0]
+        mu = self.mu if isinstance(self.mu, float) else self.mu.rvs(size=1)[0] 
         
-        if isinstance(self.mu, float):
-            mu = self.mu
-        else:
-            mu = self.mu.rvs(size = 1)[0] 
-        
+        # Calculate scaled population genetic parameters
         theta = 4 * N0 * self.L * mu
         rho = 4 * N0 * self.L * r
         
         total_n = sum([u[-1] for u in pops])
         
-        cmd = 'discoal {} 1 {} -t {} -r {} -T'.format(total_n, self.L, theta, rho)
+        # 2. Construct the base discoal command
+        cmd = f'discoal {total_n} 1 {self.L} -t {theta} -r {rho} -T'
         
         if len(pops) > 1:
-            cmd += ' -p {} '.format(len(pops)) + ' '.join([str(u[-1]) for u in pops])
+            cmd += f" -p {len(pops)} " + ' '.join([str(u[-1]) for u in pops])
         
+        # 3. Add population size changes scaling relative to N0
         size_strs = []
-        
         for ix, pop in enumerate(pops):
             N0_, Nt, n = pop
             
+            # Subpopulations (ix > 0) split off from the ancestral population
             if ix > 0:
-                pop_size_str = '-en 0.0 {0} {1}'.format(ix, N0_ / N0)
+                pop_size_str = f'-en 0.0 {ix} {N0_ / N0}'
             else:
                 pop_size_str = ''
                 
             if Nt is not None:
                 for (N, t) in Nt[1:]:
-                    _ = ' -en {0} {2} {1}'.format(t / (4 * N0), N / N0, ix)            
-                    pop_size_str += _
+                    # discoal times are scaled by 4*N0
+                    pop_size_str += f' -en {t / (4 * N0)} {ix} {N / N0}'            
                     
             size_strs.append(pop_size_str)
         
         cmd = ' '.join([cmd] + size_strs)
         
+        # 4. Add selection flags and raw arguments
         if self.args is not None:
             cmd = ' '.join((cmd, self.args))
         
         if self.s is not None:
-            if isinstance(self.s, float):
-                s = self.s
-            else:
-                s = self.s.rvs(size = 1)[0]
-                
-            cmd = ' '.join((cmd, '-a {}'.format(4 * N0 * s)))
+            s = self.s if isinstance(self.s, float) else self.s.rvs(size=1)[0]
+            # scale selection coefficient (alpha = 4*N0*s)
+            cmd = ' '.join((cmd, f'-a {4 * N0 * s}'))
         
         if self.x is not None:
-            if isinstance(self.s, float):
-                x = self.x
-            else:
-                x = self.x.rvs(size = 1)[0]
-                
-            cmd = ' '.join((cmd, '-x {}'.format(x)))
+            x = self.x if isinstance(self.x, float) else self.x.rvs(size=1)[0]
+            cmd = ' '.join((cmd, f'-x {x}'))
         
         if verbose:
             print(cmd)
             
         self.co = cmd
         
+        # Execute and parse
         return self.run_and_parse_cmd_(cmd)
         
-    def run_and_parse_cmd_(self, cmd_):      
+    def run_and_parse_cmd_(self, cmd_: str) -> dict:      
+        """
+        Executes the discoal command via a subprocess and parses its custom text output.
+
+        Args:
+            cmd_ (str): The constructed shell command to run discoal.
+
+        Returns:
+            dict: The simulation results containing:
+                - 'x' (np.ndarray): Binary genotype matrix.
+                - 'pos' (np.ndarray): Scaled variant positions (0 to 1).
+                - 'ts' (list): List of phylogenetic trees representing local ancestry.
+                - 'intervals' (list): List of positional intervals corresponding to each tree.
+        """
         process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
         
         lines = []
@@ -580,15 +650,14 @@ class DiscoalSimulator(BaseSimulator):
             line = process.stdout.readline()
             if not line:
                 break
-            lines.append(line.rstrip())  # Remove trailing newline
+            lines.append(line.rstrip())
                 
+        # Fast-forward to the start of the Newick tree definitions
         while True:
             line = lines[0]
-            
             if len(line) == 0:
                 del lines[0]
                 continue
-            
             if not line[0] == '[':
                 del lines[0]
             else:
@@ -597,15 +666,16 @@ class DiscoalSimulator(BaseSimulator):
         trees = []
         intervals = []
         l = 0
-        
         bins = [0]
+        
+        # Parse tree sequence intervals and Newick trees
         while True:
             line = lines[0]
             del lines[0]
             
             if len(line) > 0:
                 if line[0] == '[':
-                    n_sites = re.findall('\[(\d+)\]', line)[0]
+                    n_sites = re.findall(r'\[(\d+)\]', line)[0]
                     n_digits = len(n_sites)
                     n_sites = int(n_sites)
                     
@@ -615,20 +685,21 @@ class DiscoalSimulator(BaseSimulator):
                     
                     line = line[n_digits + 2:]
     
-                    tree = newick_to_tree(line, multiplier = 4 * self.N)
+                    tree = newick_to_tree(line, multiplier=4 * self.N)
                     trees.append(tree)
                 else:
                     break
             else:
                 break
                     
+        # Fast-forward to segregating sites matrix
         start = 0
         while lines[start] != '//':
             start += 1
 
         start += 1        
         lines = lines[start:]
-        n_segsites = int(lines[0].split()[-1])
+        #n_segsites = int(lines[0].split()[-1])
         pos = np.array(list(map(float, lines[1].split()[1:])))
         
         trees_ = []
@@ -637,6 +708,7 @@ class DiscoalSimulator(BaseSimulator):
         
         intervals = np.array(intervals)
                 
+        # Filter trees and intervals to only those containing actual SNPs
         for ix in range(len(trees)):
             l, r = intervals[ix]
 
@@ -646,17 +718,19 @@ class DiscoalSimulator(BaseSimulator):
             if len(ii) > 0:
                 trees_.append(trees[ix])
                 intervals_.append(intervals[ix])
-                   
+                    
+        # Parse binary genotype sequence
         x = []
         for line in lines[2:]:
-            x.append(np.fromstring(line,'u1') - ord('0'))            
+            # Convert ascii string of 0s and 1s to numpy uint8 array efficiently
+            x.append(np.fromstring(line, 'u1') - ord('0'))            
         
-        x = np.array(x, dtype = np.uint8)
+        x = np.array(x, dtype=np.uint8)
         
-        result = dict()
+        result = {}
         result['x'] = x
         result['pos'] = pos
-        result['ts'] = trees_ # just a list of trees here
+        result['ts'] = trees_ # Note: outputs a list of trees rather than an msprime.TreeSequence
         result['intervals'] = intervals_
         
         return result
