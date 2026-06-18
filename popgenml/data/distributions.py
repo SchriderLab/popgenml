@@ -50,24 +50,13 @@ class UniformFloatDiscrete:
         """Variance."""
         return np.var(self.values)
 
-class TruncatedExponential(rv_continuous):
-    """
-    Truncated Exponential distribution on the interval [a, b].
-    
-    Parameters
-    ----------
-    lam : float
-        Rate parameter (lambda).
-    """
-    def __init__(self, *args, **kwargs):
-        # Setting 'shapes' tells scipy this is a shape parameter
-        super().__init__(*args, shapes='lam', **kwargs)
-    
+class _trunc_expon_gen(rv_continuous):
+    """Stateless generator for the truncated exponential."""
     def _argcheck(self, lam):
         return lam > 0
 
+    # Note that lam is explicitly passed into all these methods
     def _pdf(self, x, lam):
-        # Denominator normalization constant: int_a^b lambda * exp(-lambda * x) dx
         denom = np.exp(-lam * self.a) - np.exp(-lam * self.b)
         return (lam * np.exp(-lam * x)) / denom
 
@@ -76,7 +65,16 @@ class TruncatedExponential(rv_continuous):
         return (np.exp(-lam * self.a) - np.exp(-lam * x)) / denom
 
     def _ppf(self, q, lam):
-        # Inverse CDF (Percent Point Function)
-        # Solve q = F(x) for x
         term = np.exp(-lam * self.a) - q * (np.exp(-lam * self.a) - np.exp(-lam * self.b))
         return -np.log(term) / lam
+
+def TruncatedExponential(a, b, lam):
+    """
+    Factory function that returns a frozen SciPy distribution.
+    This behaves exactly how popgenml expects.
+    """
+    # Initialize the generator with specific support bounds
+    gen = _trunc_expon_gen(a=a, b=b, name='trunc_expon', shapes='lam')
+    
+    # Return the 'frozen' distribution by calling it with the shape parameter
+    return gen(lam=lam)

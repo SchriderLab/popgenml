@@ -2,7 +2,7 @@
 import numpy as np
 import inspect
 import warnings
-from popgenml.data.functions import seriate_spectral
+from popgenml.data.functions import seriate_spectral, flip
 from popgenml.data.functions import tree_to_distmat
 from scipy.spatial.distance import pdist, squareform
 
@@ -59,8 +59,23 @@ class SiteDistanceMatrixTransform(TSTransform):
 
 class AlignmentTransform:
     """Base class for alignment transformations."""
-    def __call__(self, matrix, positions, L):
+    def __call__(self, matrix, positions):
         raise NotImplementedError("Subclasses must implement __call__")
+        
+class Compose(AlignmentTransform):
+    """
+    Composes several alignment transforms together.
+    
+    Args:
+        transforms (list of AlignmentTransform objects): list of transforms to compose.
+    """
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, matrix, positions):
+        for transform in self.transforms:
+            matrix, positions = transform(matrix, positions)
+        return matrix, positions
 
 class RelateTreeSequenceTransform(AlignmentTransform):
     def __init__(self):
@@ -70,18 +85,22 @@ class FastSeriate(AlignmentTransform):
     def __init__(self, dist = 'cosine'):
         self.dist = dist
     
-    def __call__(self, matrix, positions, L):
+    def __call__(self, matrix, positions):
         D = squareform(pdist(matrix, metric = self.dist))
         
         matrix, _ = seriate_spectral(matrix, D)
         
-        return matrix, positions, L
+        return matrix, positions
+
+class Flip(AlignmentTransform):
+    def __call__(self, matrix, positions):
+        return flip(matrix), positions
 
 class RandomSampleShuffle(AlignmentTransform):
     """
     Randomly shuffles the samples (rows) of the (n, l) alignment matrix.
     """
-    def __call__(self, matrix, positions, L):
+    def __call__(self, matrix, positions):
         n, l = matrix.shape
         
         # Generate a random permutation of row indices (0 to n-1)
@@ -90,32 +109,9 @@ class RandomSampleShuffle(AlignmentTransform):
         # Apply the permutation to the matrix rows
         shuffled_matrix = matrix[shuffled_indices, :]
         
-        return shuffled_matrix, positions, L
+        return shuffled_matrix, positions
 
-class RandomCrop(AlignmentTransform):
-    """
-    Randomly crops an (n, l) alignment down to (n, l_new).
-    """
-    def __init__(self, l_new):
-        self.l_new = l_new
-
-    def __call__(self, matrix, positions, L):
-        n, l = matrix.shape
-        
-        # If the alignment is already smaller than or equal to the crop size, return as-is
-        if l <= self.l_new:
-            return matrix, positions, L
-            
-        # np.random.randint's upper bound is exclusive
-        start_idx = np.random.randint(0, l - self.l_new + 1)
-        end_idx = start_idx + self.l_new
-        
-        cropped_matrix = matrix[:, start_idx:end_idx]
-        cropped_positions = positions[start_idx:end_idx]
-        
-        return cropped_matrix, cropped_positions, L
-
-class Pad(AlignmentTransform):
+class PadCrop(AlignmentTransform):
     """
     Symmetrically pads an (n, l) alignment to (n, l_new).
     If l > l_new, it randomly crops it down instead.
@@ -125,18 +121,18 @@ class Pad(AlignmentTransform):
         self.matrix_pad_val = matrix_pad_val
         self.pos_pad_val = pos_pad_val
 
-    def __call__(self, matrix, positions, L):
+    def __call__(self, matrix, positions):
         n, l = matrix.shape
         
         # 1. Randomly crop if larger than l_new
         if l > self.l_new:
             start_idx = np.random.randint(0, l - self.l_new + 1)
             end_idx = start_idx + self.l_new
-            return matrix[:, start_idx:end_idx], positions[start_idx:end_idx], L
+            return matrix[:, start_idx:end_idx], positions[start_idx:end_idx]
             
         # 2. Do nothing if exactly l_new
         elif l == self.l_new:
-            return matrix, positions, L
+            return matrix, positions
             
         # 3. Symmetrically pad if smaller than l_new
         else:
@@ -161,7 +157,7 @@ class Pad(AlignmentTransform):
                 constant_values=self.pos_pad_val
             )
             
-            return padded_matrix, padded_positions, L
+            return padded_matrix, padded_positions
 
 import popgenml.data.stats as pg_stats
 

@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset, get_worker_info
 from popgenml.data.simulators import MSPrimeSimulator, DiscoalSimulator
 
-class OnTheFlySimulationDataset(IterableDataset):
+class LiveSimulationDataset(IterableDataset):
     """
     An IterableDataset that continuously yields simulated data.
     """
@@ -42,24 +42,6 @@ class OnTheFlySimulationDataset(IterableDataset):
             # Yield the dictionary (or tensor) to the DataLoader for batching
             yield parsed_data
             sims_run += 1
-
-
-class SimulatorDataLoader(DataLoader):
-    """
-    A wrapper to directly accept your simulator and parser function.
-    """
-    def __init__(self, simulator, parse_fn, batch_size=32, num_simulations=None, **kwargs):
-        dataset = OnTheFlySimulationDataset(
-            simulator=simulator, 
-            parse_fn=parse_fn,
-            num_simulations=num_simulations
-        )
-        
-        super().__init__(
-            dataset=dataset,
-            batch_size=batch_size,
-            **kwargs
-        )
 
 class HDF5ChunkDataset(Dataset):
     """

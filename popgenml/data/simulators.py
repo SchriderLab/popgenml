@@ -465,7 +465,10 @@ class MSPrimeSimulator(BaseSimulator):
             random_seed=self.seed
         )
         
-        return self.mutate_and_return_(ts)
+        ret = self.mutate_and_return_(ts)
+        ret['r'] = r
+        
+        return ret
     
     def mutate_and_return_(self, ts: msprime.TreeSequence) -> dict:
         """
@@ -503,6 +506,7 @@ class MSPrimeSimulator(BaseSimulator):
         result['x'] = X
         result['pos'] = sites
         result['ts'] = mutated_ts
+        result['mu'] = mu
         
         return result
 
