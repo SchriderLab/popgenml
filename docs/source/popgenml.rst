@@ -5,6 +5,15 @@ popgenml
 
 API reference.
 
+Simulators
+---------------
+.. autosummary::
+   :toctree: generated/
+   
+   popgenml.data.simulators.MSPrimeSimulator
+   popgenml.data.simulators.DiscoalSimulator
+
+
 Stats
 ---------------
 
