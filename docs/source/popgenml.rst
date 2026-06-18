@@ -7,15 +7,24 @@ API reference.
 
 Simulators
 ---------------
-.. autosummary::
-   :toctree: generated/
-   
-   popgenml.data.simulators.MSPrimeSimulator
-   popgenml.data.simulators.DiscoalSimulator
+
+The following classes handle the core simulation engines.
+
+.. autoclass:: popgenml.data.simulators.MSPrimeSimulator
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.simulators.DiscoalSimulator
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 
 Stats
 ---------------
+
+Functions for computing statistics on binary popgen alignments.
 
 .. autosummary::
    :toctree: generated/
