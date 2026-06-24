@@ -1,0 +1,22 @@
+[package]
+name = "pgml"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pgml"
+# "cdylib" is required for Python extensions
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Note: "extension-module" is vital for linking to Python
+pyo3 = { version = "0.20", features = ["extension-module"] }
+numpy = "0.20"
+ndarray = { version = "0.15", features = ["rayon"] }
+rayon = "1.8"
+realfft = "3.3"
+rustfft = "6.1"
+num-complex = "0.4"
+rand = "0.8"
+rand_distr = "0.4"
+flate2 = "1.0"
