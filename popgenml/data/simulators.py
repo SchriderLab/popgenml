@@ -431,7 +431,7 @@ class MSPrimeSimulator(BaseSimulator):
         demography.sort_events()
         return demography
                     
-    def simulate(self, verbose: bool = False) -> dict:
+    def simulate(self, verbose: bool = False, seeds: tuple = (None, None)) -> dict:
         """
         Executes the coalescent ancestry simulation using msprime.
 
@@ -462,15 +462,15 @@ class MSPrimeSimulator(BaseSimulator):
             recombination_rate=r,
             ploidy=self.ploidy,
             demography=self.demography,
-            random_seed=self.seed
+            random_seed=seeds[0]
         )
         
-        ret = self.mutate_and_return_(ts)
+        ret = self.mutate_and_return_(ts, seed = seeds[1])
         ret['r'] = r
         
         return ret
     
-    def mutate_and_return_(self, ts: msprime.TreeSequence) -> dict:
+    def mutate_and_return_(self, ts: msprime.TreeSequence, seed = None) -> dict:
         """
         Applies mutations to the generated tree sequence and formats the output.
 
@@ -492,7 +492,7 @@ class MSPrimeSimulator(BaseSimulator):
             mu = self.mu.rvs(size=1)[0]
         
         # Simulate mutations using a binary discrete model
-        mutated_ts = msprime.sim_mutations(ts, rate=mu, model=self.mutation_model, random_seed=self.seed)
+        mutated_ts = msprime.sim_mutations(ts, rate=mu, model=self.mutation_model, random_seed=None)
         
         # Extract and format genotype matrix
         X = mutated_ts.genotype_matrix()
