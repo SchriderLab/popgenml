@@ -325,6 +325,9 @@ class BaseSimulator:
             
             # Store validated priors
             self.samples[pop_name] = pop_priors
+            
+        # to store parameter values from make_demography:
+        self.params = {}
 
     def set_seed(self, seed: int):
         """
@@ -397,6 +400,8 @@ class MSPrimeSimulator(BaseSimulator):
                     demography.add_population(name=pop_name, initial_size=N[0])
                     for N1, T in zip(N, t):
                         demography.add_population_parameters_change(time=T, population=pop_name, initial_size=N1)
+                    
+                    self.params['Nt'] = (N, t)
             else:
                 raise ValueError("All simulated populations must have a key 'Nt' or 'N0'")
         
@@ -454,6 +459,8 @@ class MSPrimeSimulator(BaseSimulator):
             r = self.r
         else:
             r = self.r.rvs(size=1)[0]
+            # add to the dictionary if randomly drawn
+            self.params['r'] = r
         
         # Simulate ancestry (trees)
         ts = msprime.sim_ancestry(
@@ -490,7 +497,9 @@ class MSPrimeSimulator(BaseSimulator):
             mu = self.mu
         else:
             mu = self.mu.rvs(size=1)[0]
-        
+            # add to the dictionary if randomly drawn
+            self.params['mu'] = mu
+            
         # Simulate mutations using a binary discrete model
         mutated_ts = msprime.sim_mutations(ts, rate=mu, model=self.mutation_model, random_seed=None)
         

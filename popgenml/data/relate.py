@@ -16,7 +16,7 @@ RELATE_PATH = 'Relate'
 # Grab the file path from the package and convert the Traversable object to a string
 rscript_path = str(importlib.resources.files('popgenml').joinpath('scripts', 'ms2haps.R'))
 
-rcmd = 'cd {3} && ' + rscript_path + ' {0} {1} {2}'
+rcmd = 'cd {3} && Rscript ' + rscript_path + ' {0} {1} {2}'
 relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode {7} -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
 
 def make_FW_rep(root, sample_sizes):
@@ -317,6 +317,9 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     tag = ms_file.split('/')[-1].split('.')[0]
     cmd_ = rcmd.format(os.path.abspath(ms_file), tag, L, odir)
 
+    if verbose:
+        print(cmd_)
+
     os.system(cmd_)
     
     map_file = ms_file.replace('.msOut', '.map')
@@ -339,6 +342,9 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
             f.write('0    0    0\n')
             for k in range(n_samples // 2):
                 f.write('UNR{} UNR{} 0\n'.format(k + 1, k + 1))
+                
+            f.close()
+
     else:
         # we need to rewrite the haps files (for haploid organisms)
         for sample in samples:
@@ -348,7 +354,7 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
             for k in range(int(n_samples)):
                 f.write('UNR{} NA 0\n'.format(k + 1))
     
-    f.close()
+            f.close()
     
     ofile = haps[0].split('/')[-1].replace('.haps', '') + '_' + map_file.split('/')[-1].replace('.map', '').replace(tag, '').replace('.', '')
     if ofile[-1] == '_':
@@ -359,6 +365,9 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
                              ofile, odir, mode)
     if not verbose:
         cmd_ += ' >/dev/null 2>&1'
+        
+    else:
+        print(cmd_)
     
     os.system(cmd_)
     
