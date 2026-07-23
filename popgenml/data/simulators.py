@@ -21,6 +21,8 @@ import sys
 # for continuous and discrete distributions, respectively.
 # We use this for type hinting to make the code clearer.
 Distribution = Union[stats._distn_infrastructure.rv_continuous, stats._distn_infrastructure.rv_discrete]
+import tempfile
+import os
 
 class ParameterPrior:
     """
@@ -661,15 +663,40 @@ class DiscoalSimulator(BaseSimulator):
         """
         cmd_ = shlex.split(cmd_)
         
-        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, 
-                                       stderr=subprocess.PIPE, shell=False, text=True)
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, dir='/tmp') as out_f, \
+             tempfile.NamedTemporaryFile(mode='w+', delete=False, dir='/tmp') as err_f:
+            
+            out_filename = out_f.name
+            err_filename = err_f.name
         
-        lines = []
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
-            lines.append(line.rstrip())
+            # 3. Run the simulator, directing outputs straight to the local disk
+            # This removes the 64KB pipe bottleneck completely
+            process = subprocess.Popen(
+                cmd_, 
+                stdout=out_f,   
+                stderr=err_f,   
+                shell=False, 
+                text=True
+            )
+            
+            # 4. Wait for the simulator to complete at full speed
+            process.wait()
+        
+        # 5. Read all the lines from the file back into Python memory at once
+        try:
+            with open(out_filename, 'r') as f:
+                lines = []
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    lines.append(line.rstrip())
+        finally:
+            # Clean up the temporary files from the Slurm node disk
+            if os.path.exists(out_filename):
+                os.remove(out_filename)
+            if os.path.exists(err_filename):
+                os.remove(err_filename)
             
         # Fast-forward to the start of the Newick tree definitions
         while True:
