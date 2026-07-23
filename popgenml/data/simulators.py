@@ -596,7 +596,7 @@ class DiscoalSimulator(BaseSimulator):
         total_n = sum([u[-1] for u in pops])
         
         # 2. Construct the base discoal command
-        cmd = f'discoal {total_n} 1 {self.L} -t {theta} -r {rho} -T'
+        cmd = f'discoal {total_n} 1 100001 -t {theta} -r {rho} -T'
         
         if len(pops) > 1:
             cmd += f" -p {len(pops)} " + ' '.join([str(u[-1]) for u in pops])
@@ -615,7 +615,7 @@ class DiscoalSimulator(BaseSimulator):
             if Nt is not None:
                 for (N, t) in Nt[1:]:
                     # discoal times are scaled by 4*N0
-                    pop_size_str += f' -en {t / (4 * N0)} {ix} {N / N0}'            
+                    pop_size_str += f'-en {t / (4 * N0)} {ix} {N / N0}'            
                     
             size_strs.append(pop_size_str)
         
@@ -664,17 +664,20 @@ class DiscoalSimulator(BaseSimulator):
             if not line:
                 break
             lines.append(line.rstrip())
-                
+            
         # Fast-forward to the start of the Newick tree definitions
         while True:
             line = lines[0]
+
             if len(line) == 0:
                 del lines[0]
                 continue
+            
             if not line[0] == '[':
                 del lines[0]
             else:
                 break
+            
                     
         trees = []
         intervals = []
@@ -683,9 +686,12 @@ class DiscoalSimulator(BaseSimulator):
         
         # Parse tree sequence intervals and Newick trees
         while True:
+            if len(lines) == 0:
+                break
+            
             line = lines[0]
             del lines[0]
-            
+                        
             if len(line) > 0:
                 if line[0] == '[':
                     n_sites = re.findall(r'\[(\d+)\]', line)[0]
