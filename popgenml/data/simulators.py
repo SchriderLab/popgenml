@@ -15,6 +15,7 @@ import configparser
 import math
 
 import ast
+import sys
 # scipy.stats._distn_infrastructure.rv_continuous and rv_discrete are the base classes
 # for continuous and discrete distributions, respectively.
 # We use this for type hinting to make the code clearer.
@@ -636,6 +637,7 @@ class DiscoalSimulator(BaseSimulator):
         
         if verbose:
             print(cmd)
+            sys.stdout.flush()
             
         self.co = cmd
         
@@ -656,7 +658,7 @@ class DiscoalSimulator(BaseSimulator):
                 - 'ts' (list): List of phylogenetic trees representing local ancestry.
                 - 'intervals' (list): List of positional intervals corresponding to each tree.
         """
-        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, text=True)
         
         lines = []
         while True:
