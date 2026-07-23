@@ -661,41 +661,24 @@ class DiscoalSimulator(BaseSimulator):
                 - 'ts' (list): List of phylogenetic trees representing local ancestry.
                 - 'intervals' (list): List of positional intervals corresponding to each tree.
         """
-        cmd_ = shlex.split(cmd_)
         
-        # there are lots of ways to do this but I found this to be fast and run in SLURM envs
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, dir='/tmp') as out_f, \
-             tempfile.NamedTemporaryFile(mode='w+', delete=False, dir='/tmp') as err_f:
-            
-            out_filename = out_f.name
-            err_filename = err_f.name
-
-            process = subprocess.Popen(
-                cmd_, 
-                stdout=out_f,   
-                stderr=err_f,   
-                shell=False, 
-                text=True
-            )
-            
-            # wait for the simulator to complete
-            process.wait()
+        fd, out_filename = tempfile.mkstemp(dir='/tmp')
+        os.close(fd)  # Close the file descriptor; os.system will handle the writing
         
-        # read all the lines from the file back into Python memory at once
+        # Execute the command and redirect stdout (>) to the temporary file.
+        # Note: If you want to discard stderr, append ' 2>/dev/null' to the command.
+        # If you want to capture stderr to the same file, use ' > {out_filename} 2>&1'
+        os.system(f"{cmd_} > {out_filename}")
+        
+        lines = []
         try:
             with open(out_filename, 'r') as f:
-                lines = []
-                while True:
-                    line = f.readline()
-                    if not line:
-                        break
-                    lines.append(line.rstrip())
+                # A list comprehension is significantly faster than a while True: readline() loop
+                lines = [line.rstrip() for line in f]
         finally:
-            # clean up the temporary files
+            # Clean up the temporary file
             if os.path.exists(out_filename):
                 os.remove(out_filename)
-            if os.path.exists(err_filename):
-                os.remove(err_filename)
             
         # delete the unnecessary lines at the top
         while True:
