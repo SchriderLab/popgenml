@@ -663,14 +663,13 @@ class DiscoalSimulator(BaseSimulator):
         """
         cmd_ = shlex.split(cmd_)
         
+        # there are lots of ways to do this but I found this to be fast and run in SLURM envs
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, dir='/tmp') as out_f, \
              tempfile.NamedTemporaryFile(mode='w+', delete=False, dir='/tmp') as err_f:
             
             out_filename = out_f.name
             err_filename = err_f.name
-        
-            # 3. Run the simulator, directing outputs straight to the local disk
-            # This removes the 64KB pipe bottleneck completely
+
             process = subprocess.Popen(
                 cmd_, 
                 stdout=out_f,   
@@ -679,10 +678,10 @@ class DiscoalSimulator(BaseSimulator):
                 text=True
             )
             
-            # 4. Wait for the simulator to complete at full speed
+            # wait for the simulator to complete
             process.wait()
         
-        # 5. Read all the lines from the file back into Python memory at once
+        # read all the lines from the file back into Python memory at once
         try:
             with open(out_filename, 'r') as f:
                 lines = []
@@ -692,13 +691,13 @@ class DiscoalSimulator(BaseSimulator):
                         break
                     lines.append(line.rstrip())
         finally:
-            # Clean up the temporary files from the Slurm node disk
+            # clean up the temporary files
             if os.path.exists(out_filename):
                 os.remove(out_filename)
             if os.path.exists(err_filename):
                 os.remove(err_filename)
             
-        # Fast-forward to the start of the Newick tree definitions
+        # delete the unnecessary lines at the top
         while True:
             line = lines[0]
 
@@ -717,7 +716,7 @@ class DiscoalSimulator(BaseSimulator):
         l = 0
         bins = [0]
         
-        # Parse tree sequence intervals and Newick trees
+        # parse tree sequence intervals and Newick trees
         while True:
             if len(lines) == 0:
                 break
@@ -774,7 +773,7 @@ class DiscoalSimulator(BaseSimulator):
         # Parse binary genotype sequence
         x = []
         for line in lines[2:]:
-            # Convert ascii string of 0s and 1s to numpy uint8 array efficiently
+            # convert ascii string of 0s and 1s to numpy uint8 array efficiently
             x.append(np.fromstring(line, 'u1') - ord('0'))            
         
         x = np.array(x, dtype=np.uint8)
@@ -782,7 +781,7 @@ class DiscoalSimulator(BaseSimulator):
         result = {}
         result['x'] = x
         result['pos'] = pos
-        result['ts'] = trees_ # Note: outputs a list of trees rather than an msprime.TreeSequence
+        result['ts'] = trees_ # note: outputs a list of trees rather than an msprime.TreeSequence
         result['intervals'] = intervals_
         
         return result
