@@ -15,6 +15,7 @@ import configparser
 import math
 
 import ast
+import shlex
 import sys
 # scipy.stats._distn_infrastructure.rv_continuous and rv_discrete are the base classes
 # for continuous and discrete distributions, respectively.
@@ -658,7 +659,10 @@ class DiscoalSimulator(BaseSimulator):
                 - 'ts' (list): List of phylogenetic trees representing local ancestry.
                 - 'intervals' (list): List of positional intervals corresponding to each tree.
         """
-        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, text=True)
+        cmd_ = shlex.split(cmd_)
+        
+        process = subprocess.Popen(cmd_, stdout=subprocess.PIPE, 
+                                       stderr=subprocess.PIPE, shell=False, text=True)
         
         lines = []
         while True:
