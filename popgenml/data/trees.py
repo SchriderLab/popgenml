@@ -236,3 +236,56 @@ class PGTreeSequence:
         segregating_sites = [tree.num_sites for tree in trees]
         
         return cls(trees=trees, segregating_sites=segregating_sites)
+    
+    def simulate_sfs(self, mutation_rate: float, return_expected: bool = False) -> np.ndarray:
+        """
+        Simulates an unfolded Site Frequency Spectrum (SFS) for the tree sequence.
+
+        This analytically calculates the expected number of mutations for each 
+        derived allele frequency based on branch lengths and genomic span, and 
+        then draws the simulated counts from a Poisson distribution.
+
+        Args:
+            mutation_rate (float): The mutation rate per base pair per generation.
+            return_expected (bool, optional): If True, returns the continuous 
+                expected SFS without applying stochastic Poisson sampling. 
+                Defaults to False.
+
+        Returns:
+            np.ndarray: A 1D array of size (n_samples + 1) where the index `k` 
+            represents the count of sites with exactly `k` derived alleles. 
+            Indices 0 and n_samples will be 0.
+        """
+        if not self.trees:
+            return np.array([])
+            
+        # Total number of samples in the trees
+        n_samples = self.trees[0].num_samples
+        
+        # Initialize an array to hold the expected SFS (size n+1 so index matches frequency)
+        expected_sfs = np.zeros(n_samples + 1)
+        
+        for tree in self.trees:
+            span = tree.span
+            if span == 0:
+                continue
+                
+            for u in tree.nodes():
+                parent = tree.parent(u)
+                
+                # Exclude the root (it has no parent branch)
+                if parent != tskit.NULL:
+                    branch_length = max(tree.time(parent) - tree.time(u), 0.0)
+                    
+                    # Number of sample leaves subtended by this branch
+                    # len(tree.samples(u)) is very fast in tskit (O(1) slice)
+                    k = len(tree.samples(u))
+                    
+                    # Expected mutations: rate * branch_length * genomic_span
+                    expected_sfs[k] += mutation_rate * branch_length * span
+                    
+        if return_expected:
+            return expected_sfs
+        else:
+            # Draw actual simulated mutation counts from a Poisson distribution
+            return np.random.poisson(expected_sfs)
