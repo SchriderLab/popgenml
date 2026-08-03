@@ -311,6 +311,8 @@ int main(int argc, const char * argv[]){
 				printf("[%d]",nSites- lastBreak);
 				//printf("%g\n",allNodes[findRootAtSite(1.0-(1.0/nSites))]->time);
 				printTreeAtSite(1.0 - (1.0/nSites)); 
+				
+				makeGametesMS(argc,argv);
 
 			}
 			else{

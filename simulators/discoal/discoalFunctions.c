@@ -2188,7 +2188,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 			newickRecurse(aNode->rightChild,site,0.0);
 			printf(")");
 			if(nAncestorsHere(aNode, site) != sampleSize){
-				printf(":%f",(aNode->branchLength + tempTime)*0.5);
+				printf(":%.7g",(aNode->branchLength + tempTime)*0.5);
 			}
 			
 		}
@@ -2207,7 +2207,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 	}
 	else{
 		if(isLeaf(aNode)){
-			printf("%d:%f",aNode->id, \
+			printf("%d:%.7g",aNode->id, \
                     (aNode->branchLength +tempTime)*0.5);
 		}
 		else{ //recombination node
