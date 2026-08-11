@@ -2,3 +2,6 @@ tskit
 msprime
 demesdraw
 scikit-bio
+scikit-allel
+matplotlib
+cyvcf2

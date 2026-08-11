@@ -3,6 +3,52 @@ import gzip
 import numpy as np
 import os
 
+from cyvcf2 import VCF
+
+def load_vcf(vcf_path: str) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Loads a VCF file and returns a binary alignment and floating point positions.
+    Filters out any mutations that are not mono-allelic.
+    Missing data is represented as -1.
+    
+    Args:
+        vcf_path: Path to the VCF file.
+        
+    Returns:
+        A tuple containing:
+        - alignment: 2D numpy array of shape (num_haplotypes, num_sites) containing 0s, 1s, and -1s (missing).
+        - positions: 1D numpy array of shape (num_sites,) containing floating point positions.
+    """
+    vcf = VCF(vcf_path)
+    
+    positions = []
+    haplotypes = []
+    
+    for variant in vcf:
+        # A mono-allelic mutation has exactly one alternate allele.
+        if len(variant.ALT) != 1:
+            continue
+            
+        positions.append(float(variant.POS))
+        
+        # variant.genotypes returns [allele1, allele2, phased_boolean]
+        # Slice [:, :2] to drop the phase boolean, leaving numeric allele calls.
+        # cyvcf2 inherently uses -1 for missing data, so no transformation is needed here.
+        gts = np.array(variant.genotypes)[:, :2]
+        
+        # Flatten to treat each chromosome copy as an independent sequence/haplotype.
+        haplotypes.append(gts.flatten())
+        
+    if not haplotypes:
+        return np.array([]), np.array([])
+        
+    # Stack into a 2D array and transpose to (num_haplotypes, num_sites)
+    alignment = np.vstack(haplotypes).T.astype(np.int8)
+    positions = np.array(positions, dtype=np.float32)
+    
+    return alignment, positions
+
+
 """
 Appends a simulation (genotype matrix X, (n_samples, n_sites) and positions (0 to 1)) to a text file 
 in a way identical to how ms outputs simulations.
