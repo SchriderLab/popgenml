@@ -710,6 +710,89 @@ def to_unique(X):
     
     return x
 
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
+
+def seriate_ortools(data: np.ndarray, metric: str = 'euclidean', scale_factor: float = 1e5) -> tuple[np.ndarray, list[int]]:
+    """
+    Seriates a 2D numpy array by ordering its rows based on similarity.
+    
+    Args:
+        data: A 2D numpy array to be seriated.
+        metric: The distance metric for scipy's pdist (default: 'euclidean').
+        scale_factor: OR-Tools requires integer weights. This factor scales the 
+                      float distances to integers before routing.
+                      
+    Returns:
+        A tuple containing:
+        - The seriated 2D numpy array.
+        - The permutation list (the new order of original indices).
+    """
+    num_rows = data.shape[0]
+    if num_rows <= 2:
+        return data.copy(), list(range(num_rows))
+
+    # 1. Compute the pairwise distance matrix using scipy
+    # squareform converts the condensed distance matrix returned by pdist into a 2D matrix
+    dist_matrix = squareform(pdist(data, metric=metric))
+
+    # 2. Scale float distances to integers (required by OR-Tools)
+    dist_matrix_int = (dist_matrix * scale_factor).astype(int).tolist()
+
+    # 3. Setup OR-Tools Routing Model
+    # We add 1 dummy node to convert the TSP cycle into a path problem.
+    num_nodes = num_rows + 1
+    dummy_node = num_rows
+    
+    # Manager: (num_total_nodes, num_vehicles, start_node)
+    # We start and end at the dummy node.
+    manager = pywrapcp.RoutingIndexManager(num_nodes, 1, dummy_node)
+    routing = pywrapcp.RoutingModel(manager)
+
+    # 4. Define the distance callback
+    def distance_callback(from_index, to_index):
+        # Convert routing variable indices to matrix node indices
+        from_node = manager.IndexToNode(from_index)
+        to_node = manager.IndexToNode(to_index)
+        
+        # If moving to or from the dummy node, cost is 0
+        if from_node == dummy_node or to_node == dummy_node:
+            return 0
+            
+        return dist_matrix_int[from_node][to_node]
+
+    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+    # 5. Set search parameters
+    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+    search_parameters.first_solution_strategy = (
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    )
+    # Optional: Enable local search to improve the initial solution
+    search_parameters.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+    )
+    search_parameters.time_limit.seconds = 2  # Max time allowed for optimization
+
+    # 6. Solve the problem
+    solution = routing.SolveWithParameters(search_parameters)
+
+    if not solution:
+        raise RuntimeError("OR-Tools could not find a solution for the given distance matrix.")
+
+    # 7. Extract the ordered path, ignoring the dummy node
+    order = []
+    index = routing.Start(0)
+    while not routing.IsEnd(index):
+        node_index = manager.IndexToNode(index)
+        if node_index != dummy_node:
+            order.append(node_index)
+        index = solution.Value(routing.NextVar(index))
+
+    # Return the reordered array and the index permutation
+    return data[order], order
+
 def seriate_spectral(x, C): 
     """
     Reorder rows in a matrix using spectral seriation (Fiedler vector approach).

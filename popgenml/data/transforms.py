@@ -2,7 +2,7 @@
 import numpy as np
 import inspect
 import warnings
-from popgenml.data.functions import seriate_spectral, flip
+from popgenml.data.functions import seriate_spectral, flip, seriate_ortools
 from popgenml.data.functions import tree_to_distmat
 from scipy.spatial.distance import pdist, squareform
 
@@ -89,6 +89,15 @@ class FastSeriate(AlignmentTransform):
         D = squareform(pdist(matrix, metric = self.dist))
         
         matrix, _ = seriate_spectral(matrix, D)
+        
+        return matrix, positions
+    
+class ORToolsSeriate(AlignmentTransform):
+    def __init__(self, dist = 'cosine'):
+        self.dist = dist
+    
+    def __call__(self, matrix, positions):        
+        matrix, _ = seriate_ortools(matrix, self.dist)
         
         return matrix, positions
 
