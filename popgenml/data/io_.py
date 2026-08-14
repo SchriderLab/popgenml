@@ -48,6 +48,63 @@ def load_vcf(vcf_path: str) -> tuple[np.ndarray, np.ndarray]:
     
     return alignment, positions
 
+def write_vcf(alignment: np.ndarray, positions: np.ndarray, L: int, vcf_path: str) -> None:
+    """
+    Writes a binary alignment and positions to a VCF file.
+    Acts as an inverse to `load_vcf`, reconstructing diploid samples and 
+    using placeholder nucleotides where data was lost.
+    
+    Args:
+        alignment: 2D numpy array of shape (num_haplotypes, num_sites) containing 0, 1, and -1.
+        positions: 1D numpy array of shape (num_sites,) containing floating point positions.
+        L: The length of the alignment in base pairs.
+        vcf_path: Path to write the output VCF file.
+    """
+    num_haplotypes, num_sites = alignment.shape
+    
+    # Check if we can pair the haplotypes back into diploid samples
+    is_diploid = (num_haplotypes % 2 == 0)
+    num_samples = num_haplotypes // 2 if is_diploid else num_haplotypes
+    
+    with open(vcf_path, 'w') as f:
+        # 1. Write VCF Meta-information headers
+        f.write("##fileformat=VCFv4.2\n")
+        f.write(f"##contig=<ID=chr1,length={L}>\n")
+        f.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
+        
+        # 2. Write the Column Header
+        # Generate dummy sample names
+        header = ["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]
+        sample_names = [f"Sample_{i+1}" for i in range(num_samples)]
+        f.write("\t".join(header + sample_names) + "\n")
+        
+        # 3. Write the Variant Records
+        for site_idx in range(num_sites):
+            pos = int(positions[site_idx])
+            
+            # Using placeholders for dropped metadata
+            chrom = "chr1"
+            ref = "A" 
+            alt = "T"
+            
+            row = [chrom, str(pos), ".", ref, alt, ".", "PASS", ".", "GT"]
+            
+            site_alleles = alignment[:, site_idx]
+            
+            if is_diploid:
+                # Pair adjacent haplotypes into phased diploid genotypes (e.g., 0|1)
+                for i in range(0, num_haplotypes, 2):
+                    a1 = "." if site_alleles[i] == -1 else str(site_alleles[i])
+                    a2 = "." if site_alleles[i+1] == -1 else str(site_alleles[i+1])
+                    row.append(f"{a1}|{a2}")
+            else:
+                # Handle as haploid genotypes
+                for i in range(num_haplotypes):
+                    a1 = "." if site_alleles[i] == -1 else str(site_alleles[i])
+                    row.append(a1)
+                    
+            f.write("\t".join(row) + "\n")
+
 
 """
 Appends a simulation (genotype matrix X, (n_samples, n_sites) and positions (0 to 1)) to a text file 

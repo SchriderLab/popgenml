@@ -262,6 +262,23 @@ def read_anc(anc_file, pop_sizes = (40,0)):
 def harmonic_number(n):
     return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
 
+def get_haps_positions(filename):
+    """
+    Parses a .haps file and returns a list of SNP positions.
+    Assumes standard Oxford format: 
+    CHR ID POS REF ALT G1 G2 ...
+    """
+    positions = []
+    with open(filename, 'r') as f:
+        for line in f:
+            if not line.strip():
+                continue
+            # Split by whitespace and take the 3rd element (index 2)
+            parts = line.split()
+            if len(parts) > 2:
+                positions.append(int(parts[2]))
+    return positions
+
 def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = False,
            return_graph = False, mode = 'All', odir = None):
     """
@@ -334,6 +351,8 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))
     samples = list(map(os.path.abspath, [u.replace('.haps', '.sample') for u in haps if os.path.exists(u.replace('.haps', '.sample'))]))
     
+    
+    
     # we need to rewrite the haps files (for haploid organisms)
     if diploid:
         for sample in samples:
@@ -371,15 +390,16 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     
     os.system(cmd_)
     
-    
     if mode == "All":
         anc_file = os.path.join(odir, '{}.anc'.format(ofile))
         
         X, edge_indices, snps, branch_lengths = read_anc(anc_file, pop_sizes = (n_samples, 0))
         
+        pos_relate = get_haps_positions(os.path.join(temp_dir.name, 'relate/sim.haps'))
+        
         if odir is None:
             temp_dir.cleanup()
     
-        return X, edge_indices, snps, branch_lengths
+        return X, edge_indices, snps, branch_lengths, pos_relate
     else:
         return cmd_

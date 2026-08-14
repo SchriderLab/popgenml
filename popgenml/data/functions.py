@@ -10,6 +10,9 @@ import itertools
 import tskit
 import newick
 
+def harmonic_number(n):
+    return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
+
 def flip(arr):
     """
     Flips columns of a binary array based on their sum.
