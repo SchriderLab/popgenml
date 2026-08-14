@@ -73,7 +73,7 @@ fn compute_cwt<'py>(
 }
 
 #[pymodule]
-fn pgml(_py: Python, m: &PyModule) -> PyResult<()> {
+fn rust_cwt(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_cwt, m)?)?;
     m.add_class::<WaveletConfig>()?; 
     
@@ -169,42 +169,52 @@ pub fn cwt_real(
     
     let padded_length = next_power_of_2(length + 2 * pad_len);
     let mut output = Array3::<f32>::zeros((scales.len(), n_signals, length));
-
+    let mut planner = RealFftPlanner::<f32>::new();
+    let r2c = planner.plan_fft_forward(padded_length);
+    let c2r = planner.plan_fft_inverse(padded_length);
+    
     output.axis_iter_mut(Axis(0)).into_par_iter()
         .zip(scales.par_iter())
-        .for_each(|(mut scale_slice, &scale)| {
-            let mut planner = RealFftPlanner::<f32>::new();
-            let r2c = planner.plan_fft_forward(padded_length);
-            let c2r = planner.plan_fft_inverse(padded_length);
-
+        .for_each(|(mut scale_slice, &scale)| {            
+            // 2. Use the shared r2c and c2r plans inside the loop safely
             let mut kernel_fft = r2c.make_output_vec();
             r2c.process(&mut wavelet.generate(padded_length, scale), &mut kernel_fft).unwrap();
 
             scale_slice.axis_iter_mut(Axis(0)).into_par_iter().enumerate()
-                .for_each(|(row_idx, mut row)| {
-                    let mut padded_signal = vec![0.0f32; padded_length];
-                    let signal_row = input.row(row_idx);
+            .for_each_init(
+                || {
+                    // This closure runs exactly once per Rayon thread to allocate reusable memory
+                    (
+                        vec![0.0f32; padded_length],
+                        r2c.make_output_vec(),
+                        c2r.make_output_vec()
+                    )
+                },
+                |(padded_signal, signal_fft, result_time), (row_idx, mut row)| {
                     
-                    // Center the signal in the padded buffer
+                    // Clear the padded signal buffer for the new row instead of reallocating
+                    padded_signal.fill(0.0);
+                    
+                    let signal_row = input.row(row_idx);
                     for i in 0..length {
                         padded_signal[i + pad_len] = signal_row[i];
                     }
-
-                    let mut signal_fft = r2c.make_output_vec();
-                    r2c.process(&mut padded_signal, &mut signal_fft).unwrap();
-
+        
+                    // The FFT process writes directly into your reused buffers
+                    r2c.process(padded_signal, signal_fft).unwrap();
+        
                     for i in 0..signal_fft.len() {
                         signal_fft[i] *= kernel_fft[i];
                     }
-
-                    let mut result_time = c2r.make_output_vec();
-                    c2r.process(&mut signal_fft, &mut result_time).unwrap();
-
+        
+                    c2r.process(signal_fft, result_time).unwrap();
+        
                     let norm = padded_length as f32 * scale.sqrt();
                     for i in 0..length {
                         row[i] = result_time[i + pad_len] / norm;
                     }
-                });
+                }
+            );
         });
     output
 }
