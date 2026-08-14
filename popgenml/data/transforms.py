@@ -77,10 +77,6 @@ class Compose(AlignmentTransform):
             matrix, positions = transform(matrix, positions)
         return matrix, positions
 
-class RelateTreeSequenceTransform(AlignmentTransform):
-    def __init__(self):
-        return
-
 class FastSeriate(AlignmentTransform):
     def __init__(self, dist = 'cosine'):
         self.dist = dist
