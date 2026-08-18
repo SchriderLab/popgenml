@@ -746,11 +746,14 @@ class DiscoalSimulator(BaseSimulator):
         for ix in range(len(trees)):
             l, r = intervals[ix]
 
-            ii = np.where((pos * self.L >= l) & (pos * self.L < r))[0]
+            ii = np.where((pos * 100001 >= l) & (pos * 100001 < r))[0]
             n_snps += len(ii)
             
             if len(ii) > 0:
                 trees_.append(trees[ix])
+                l = int((self.L / 100001) * l)
+                r = int((self.L / 100001) * r)
+                
                 intervals_.append(intervals[ix])
                     
         # Parse binary genotype sequence
