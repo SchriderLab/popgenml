@@ -754,7 +754,7 @@ class DiscoalSimulator(BaseSimulator):
                 l = int((self.L / 100001) * l)
                 r = int((self.L / 100001) * r)
                 
-                intervals_.append(intervals[ix])
+                intervals_.append((l, r))
                     
         # Parse binary genotype sequence
         x = []
