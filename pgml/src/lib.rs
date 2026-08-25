@@ -73,7 +73,7 @@ fn compute_cwt<'py>(
 }
 
 #[pymodule]
-fn rust_cwt(_py: Python, m: &PyModule) -> PyResult<()> {
+fn pgml(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_cwt, m)?)?;
     m.add_class::<WaveletConfig>()?; 
     
