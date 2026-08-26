@@ -164,6 +164,125 @@ class SplineHistory(History):
         
         return t, y
     
+import numpy as np
+from scipy.integrate import cumulative_trapezoid, solve_ivp, simpson
+from scipy.optimize import brentq
+from scipy.interpolate import interp1d
+from scipy.special import expit
+from numpy.polynomial.chebyshev import chebval
+
+def precompute_kingman_lineages(n, tau_max=15.0, num_pts=1000):
+    """Precomputes the expected number of surviving lineages over coalescent time tau."""
+    tau_grid = np.linspace(0, tau_max, num_pts)
+    
+    def kingman_odes(tau, P):
+        dP = np.zeros_like(P)
+        for k in range(2, n + 1):
+            rate_out = k * (k - 1) / 2.0
+            dP[k] = -rate_out * P[k]
+            if k < n:
+                rate_in = (k + 1) * k / 2.0
+                dP[k] += rate_in * P[k+1]
+        return dP
+    
+    P_init = np.zeros(n + 1)
+    P_init[n] = 1.0
+    
+    sol = solve_ivp(kingman_odes, [0, tau_max], P_init, t_eval=tau_grid, method='BDF')
+    states = np.arange(2, n + 1)
+    expected_lineages = np.sum(sol.y[2:] * states[:, None], axis=0)
+    
+    return interp1d(sol.t, expected_lineages, kind='cubic', bounds_error=False, fill_value=0.0)
+
+class TargetedHistory:
+    """
+    Base class for sampling demographic histories that target a specific expected 
+    number of SNPs within strictly enforced population bounds.
+    """
+    def __init__(self, target_snps=20000, n_haps=16, mu=1.5e-8, seq_len=2.5e6,
+                 N_min=5000.0, N_max=100000.0, T_max_sim=200000, n_sim_epochs=100,
+                 T_max_math=2_000_000, n_math_pts=1000):
+        
+        self.target_Ln = target_snps / (mu * seq_len)
+        self.N_min = N_min
+        self.N_max = N_max
+        
+        # 1. Math Grid: Massive horizon to ensure the coalescent integral completes
+        self.t_math = np.geomspace(1, T_max_math + 1, n_math_pts) - 1 
+        self.x_math = 2.0 * (self.t_math / T_max_math) - 1.0
+        
+        # 2. Simulation Grid: Coarser horizon for efficient msprime stepping
+        self.t_sim = np.geomspace(1, T_max_sim + 1, n_sim_epochs) - 1
+        
+        self.expected_A_func = precompute_kingman_lineages(n_haps)
+
+    def _scale_and_bound(self, raw_log_shape):
+        """Finds the optimal scalar, bounds the curve, and interpolates to the sim grid."""
+        def expected_Ln_error(log_c):
+            squashed = expit(log_c + raw_log_shape)
+            N_t = self.N_min + squashed * (self.N_max - self.N_min)
+            
+            # Using 1.0 / (2.0 * N_t) assumes msprime uses ploidy=2 
+            inv_2N = 1.0 / (2.0 * N_t)
+            Lambda_t = cumulative_trapezoid(inv_2N, self.t_math, initial=0)
+            
+            expected_Ln = simpson(y=self.expected_A_func(Lambda_t), x=self.t_math)
+            return expected_Ln - self.target_Ln
+            
+        # Solve for the exact log-shift
+        log_c_star = brentq(expected_Ln_error, -20.0, 20.0)
+        
+        # Generate the mathematically complete curve
+        squashed_final = expit(log_c_star + raw_log_shape)
+        N_t_math = self.N_min + squashed_final * (self.N_max - self.N_min)
+        
+        # Interpolate down to the fast simulation grid
+        N_t_sim = np.interp(self.t_sim, self.t_math, N_t_math)
+        
+        return self.t_sim, N_t_sim
+
+
+class ChebyshevHistory(TargetedHistory):
+    """Generates smoothly fluctuating trajectories using Chebyshev polynomials."""
+    
+    def __init__(self, num_coeffs=12, volatility=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self.num_coeffs = num_coeffs
+        self.volatility = volatility
+
+    def sample_curve(self):
+        # Decaying variance limits aggressive high-frequency oscillations
+        variances = np.array([self.volatility / (j + 1)**0.5 for j in range(self.num_coeffs)])
+        coeffs = np.random.randn(self.num_coeffs) * variances
+        
+        # Evaluate on the massive math grid
+        raw_log_shape = chebval(self.x_math, coeffs)
+        
+        return self._scale_and_bound(raw_log_shape)
+
+
+class ExponentialHistory(TargetedHistory):
+    """Generates trajectories mapping recent exponential growth or decay back into a plateau."""
+    
+    def __init__(self, abs_r_min=1e-5, abs_r_max=1e-3, **kwargs):
+        super().__init__(**kwargs)
+        # We define the bounds for the absolute magnitude of the rate
+        self.abs_r_min = abs_r_min
+        self.abs_r_max = abs_r_max
+
+    def sample_curve(self):
+        # 1. Draw a random magnitude for the rate (log-uniform)
+        r_mag = np.exp(np.random.uniform(np.log(self.abs_r_min), np.log(self.abs_r_max)))
+        
+        # 2. Randomly assign a positive (growth) or negative (decay) sign
+        sign = np.random.choice([-1.0, 1.0])
+        r = r_mag * sign
+        
+        # 3. Looking backwards in time, the log-size scales linearly
+        raw_log_shape = -r * self.t_math
+        
+        return self._scale_and_bound(raw_log_shape)
+    
 def _parse_prior_value(value_str: str, safe_globals: dict) -> Any:
     """Helper to parse a string from the config into a float, int, or distribution."""
     try:
@@ -200,6 +319,10 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
         'SplineHistory': SplineHistory,
         'BottleNeckHistory': BottleNeckHistory,
         'UniformFloatDiscrete' : UniformFloatDiscrete,
+        'np' : np,
+        
+        'ChebyshevHistory' : ChebyshevHistory,
+        'ExponentialHistory' : ExponentialHistory,
         'TruncatedExponential' : TruncatedExponential
     }
 
@@ -276,9 +399,14 @@ class BaseSimulator:
             ValueError: If a value is out of the allowed range (e.g., ploidy not in [1, 2]).
         """
         self.seed = seed
+        self.config_path = config_path
         
+        self._instant()
+        
+    # instantiate prior (need to run each time)
+    def _instant(self):
         # --- Create priors from the config file ---
-        priors = create_prior_from_config(config_path)
+        priors = create_prior_from_config(self.config_path)
         base_priors = priors['base']
         sample_priors = priors['samples']
         self.migration_priors = priors['migration']
@@ -373,6 +501,7 @@ class MSPrimeSimulator(BaseSimulator):
         Raises:
             ValueError: If a population is missing both 'Nt' and 'N0' definitions.
         """
+        self._instant()
         demography = msprime.Demography()
         
         # 1. Add populations and size changes
