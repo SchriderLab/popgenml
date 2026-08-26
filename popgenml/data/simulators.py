@@ -386,6 +386,8 @@ class MSPrimeSimulator(BaseSimulator):
                 else:
                     N0 = N0.rvs(size=1)[0]
                     demography.add_population(name=pop_name, initial_size=N0)
+                    
+                self.params['N0'] = N0
             
             elif 'Nt' in self.samples[pop_name].keys():
                 Nt = self.samples[pop_name]['Nt']
