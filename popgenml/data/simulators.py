@@ -245,7 +245,7 @@ class TargetedHistory:
 class ChebyshevHistory(TargetedHistory):
     """Generates smoothly fluctuating trajectories using Chebyshev polynomials."""
     
-    def __init__(self, num_coeffs=12, volatility=1.0, **kwargs):
+    def __init__(self, num_coeffs=13, volatility=1.0, **kwargs):
         super().__init__(**kwargs)
         self.num_coeffs = num_coeffs
         self.volatility = volatility
@@ -272,8 +272,11 @@ class ExponentialHistory(TargetedHistory):
 
     def sample_curve(self):
         # 1. Draw a random magnitude for the rate (log-uniform)
-        r_mag = np.exp(np.random.uniform(np.log(self.abs_r_min), np.log(self.abs_r_max)))
-        
+        if self.abs_r_min != self.abs_r_max:
+            r_mag = np.exp(np.random.uniform(np.log(self.abs_r_min), np.log(self.abs_r_max)))
+        else:
+            r_mag = 0.
+            
         # 2. Randomly assign a positive (growth) or negative (decay) sign
         sign = np.random.choice([-1.0, 1.0])
         r = r_mag * sign
@@ -549,6 +552,8 @@ class MSPrimeSimulator(BaseSimulator):
                 if isinstance(m, list):
                     for m_, t_ in m:
                         demography.add_migration_rate_change(time=t_, source=src, dest=dst, rate=m_)
+                elif isinstance(m, float):
+                    demography.add_migration_rate_change(time=0., source=src, dest=dst, rate=m)
                 else:
                     T, M = m.sample_curve()
                     for m_, t_ in zip(M, T):
