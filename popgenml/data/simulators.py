@@ -329,7 +329,7 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
         'TruncatedExponential' : TruncatedExponential
     }
 
-    priors = {'base': {}, 'samples': {}, 'migration' : {}, 'discoal' : {}, 'demography' : {}}
+    priors = {'base': {}, 'samples': {}, 'migration' : {}, 'discoal' : {}, 'demography' : {}, 'sweep' : {}}
     
     # Process the [base] section for simple priors
     if 'base' in config:
@@ -369,9 +369,15 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
             priors['demography'][key] = _parse_prior_value(value_str, safe_globals)
     else:
         priors['demography'] = None
+    
+    if 'sweep' in config:
+        for key, value_str in config.items('sweep'):
+            priors['sweep'][key] = _parse_prior_value(value_str, safe_globals)
+    else:
+        priors['sweep'] = None
         
     return priors
-
+        
 import msprime
 import numpy as np
 import subprocess
@@ -415,6 +421,7 @@ class BaseSimulator:
         self.migration_priors = priors['migration']
         self.discoal_priors = priors['discoal']
         self.demography_priors = priors['demography']
+        self.sweep_priors = priors['sweep']
 
         # --- Validate and store base priors ---
         required_base_keys = ['mu', 'r', 'l', 'ploidy']
@@ -595,7 +602,25 @@ class MSPrimeSimulator(BaseSimulator):
         samples = {}
         for pop in self.samples.keys():
             samples[pop] = self.samples[pop]['n']
-        
+            
+        # experimental feature...
+        ancestry_model = None
+        if self.sweep_priors:
+            sweep_kwargs = {}
+            for key, val in self.sweep_priors.items():
+                # Check if the parameter is a scipy.stats distribution
+                if hasattr(val, 'rvs'):
+                    drawn_val = val.rvs(size=1)[0]
+                    sweep_kwargs[key] = drawn_val
+                    self.params[f'sweep_{key}'] = drawn_val
+                else:
+                    sweep_kwargs[key] = val
+                    self.params[f'sweep_{key}'] = val
+            
+            # Combine the sweep model with the standard coalescent
+            sweep_model = msprime.SweepGenicSelection(**sweep_kwargs)
+            ancestry_model = [sweep_model, msprime.StandardCoalescent()]
+                    
         # Resolve recombination rate (fixed or sampled)
         if isinstance(self.r, float):
             r = self.r
@@ -611,6 +636,7 @@ class MSPrimeSimulator(BaseSimulator):
             recombination_rate=r,
             ploidy=self.ploidy,
             demography=self.demography,
+            model=ancestry_model,
             random_seed=seeds[0]
         )
         
@@ -750,14 +776,14 @@ class DiscoalSimulator(BaseSimulator):
             
             # Subpopulations (ix > 0) split off from the ancestral population
             if ix > 0:
-                pop_size_str = f'-en 0.0 {ix} {N0_ / N0}'
+                pop_size_str = f' -en 0.0 {ix} {N0_ / N0}'
             else:
                 pop_size_str = ''
                 
             if Nt is not None:
                 for (N, t) in Nt[1:]:
                     # discoal times are scaled by 4*N0
-                    pop_size_str += f'-en {t / (4 * N0)} {ix} {N / N0}'            
+                    pop_size_str += f' -en {t / (4 * N0)} {ix} {N / N0}'            
                     
             size_strs.append(pop_size_str)
         
@@ -910,84 +936,3 @@ class DiscoalSimulator(BaseSimulator):
         
         return result
                         
-### end of written code
-## --------------------            
-# --- Example Usage ---
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    
-    # Create a temporary file path to pass to the function
-    config_path = '../PopGenML/configs/mig/mig_n4.ini'
-
-    sim = MSPrimeSimulator(config_path)
-    popsize = sim.samples['pop1']['Nt']
-    t, N = popsize.sample_curve()
-    
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    for k in range(12):
-        # Sample and plot a history curve from the history object
-        print("\nSampling history for 'pop1'...")
-        t_curve, y_curve = popsize.sample_curve()
-        
-        ax.plot(np.log(t_curve), y_curve, label='Sampled Spline History for pop1', color='dodgerblue', linewidth=1)
-    
-    ax.set_title('Sampled Population Size History from Config', fontsize=16)
-    ax.set_xlabel('Time (in generations)', fontsize=12)
-    ax.set_ylabel('Effective Population Size (N_e)', fontsize=12)
-    ax.grid(True)
-    plt.tight_layout()
-    
-    print("\nDisplaying plot of the sampled population history...")
-    plt.show()
-    
-    sys.exit()
-    
-
-    """
-    # 2. Create the prior object from the config file
-    print("--- Parsing config file and creating priors ---")
-    priors = create_prior_from_config(config_path)
-    print("Priors created successfully.")
-
-    # 3. Demonstrate accessing the new, nested structure
-    print("\n--- Accessing created priors ---")
-    
-    print("\nBase priors:")
-    mu_prior = priors['base']['mu']
-    r_const = priors['base']['r']
-    print(f"  mu is a distribution: {mu_prior}")
-    print(f"  r is a constant: {r_const}")
-
-    print("\nSample priors:")
-    pop1_history_generator = priors['samples']['pop1']['Nt']
-    pop2_n0_prior = priors['samples']['pop2']['N0']
-    print(f"  pop1 Nt model is a: {type(pop1_history_generator)}")
-    print(f"  pop2 N0 prior is a: {pop2_n0_prior}")
-
-    # 4. Sample from the priors to show they are functional
-    print("\n--- Sampling from priors ---")
-    print(f"  Sampling mu: {mu_prior.rvs(size=1)[0]:.2e}")
-    print(f"  Sampling pop2 N0: {pop2_n0_prior.rvs(size=1)[0]:.2f}")
-    
-    # 5. Plot the results
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    for k in range(12):
-        # Sample and plot a history curve from the history object
-        print("\nSampling history for 'pop1'...")
-        t_curve, y_curve = pop1_history_generator.sample_curve()
-        
-        ax.plot(np.log(t_curve), y_curve, label='Sampled Spline History for pop1', color='dodgerblue', linewidth=1)
-    
-    ax.set_title('Sampled Population Size History from Config', fontsize=16)
-    ax.set_xlabel('Time (in generations)', fontsize=12)
-    ax.set_ylabel('Effective Population Size (N_e)', fontsize=12)
-    ax.grid(True)
-    plt.tight_layout()
-    
-    print("\nDisplaying plot of the sampled population history...")
-    plt.show()
-    """
