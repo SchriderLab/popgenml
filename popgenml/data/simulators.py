@@ -117,52 +117,6 @@ class BottleNeckHistory(History):
         self.co = N + t
         
         return t, N
-
-class SplineHistory(History):
-    """
-    Generates a population size history curve using a spline interpolation.
-    The population size at control points is drawn from a given scipy.stats distribution.
-    
-    The number of control points for each curve is chosen from a uniform discrete distribution with support: range(min_k, max_k + 1)
-    The times for the control points is drawn from a uniform distribution from log(t) = 0 to log(t) = max_log_time.
-    """
-    def __init__(self, N: Distribution, max_k = 33, 
-                 min_k = 3, max_log_time = 11, n_time_points = 128):
-        """
-        Initializes the spline history generator.
-
-        Args:
-            N (Distribution): A scipy.stats distribution object for sampling
-                population sizes (y-values).
-            max_k (int, optional): The maximum number of control points. Defaults to 33.
-            min_k (int, optional): The minimum number of control points. Defaults to 3
-            max_log_time (int, optional): The maximum time on a log scale. Defaults to 11.
-            n_time_points (int, optional): The number of points for the final time grid. Defaults to 128.
-        """
-        self.N = N
-        self.kind = 'linear'
-        self.max_k = max_k
-        self.max_log_time = max_log_time
-        self.n_time_points = n_time_points
-        
-    def sample_curve(self) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Generates a parameter curve defined over time in generations.
-
-        Returns:
-            tuple[np.ndarray, np.ndarray]: A tuple containing the fine time grid (t)
-            and the corresponding interpolated population sizes (or another parameter) (y).
-        """
-        n_points = np.random.choice(range(3, self.max_k + 1, 2))
-        y_points = self.N.rvs(size=n_points)
-        
-        t_points = [1] + sorted(list(np.exp(np.random.uniform(0., self.max_log_time, n_points - 1))))
-
-        spline = interp1d(t_points, y_points, kind = self.kind)
-        t = np.exp(np.linspace(0, np.log(t_points[-1]), self.n_time_points))
-        y = spline(t)
-        
-        return t, y
     
 import numpy as np
 from scipy.integrate import cumulative_trapezoid, solve_ivp, simpson
@@ -319,7 +273,6 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
     safe_globals = {
         'stats': stats,
         'math' : math,
-        'SplineHistory': SplineHistory,
         'BottleNeckHistory': BottleNeckHistory,
         'UniformFloatDiscrete' : UniformFloatDiscrete,
         'np' : np,
