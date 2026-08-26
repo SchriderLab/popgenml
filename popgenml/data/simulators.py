@@ -453,6 +453,8 @@ class MSPrimeSimulator(BaseSimulator):
             dict: A dictionary containing the genotype matrix ('x'), variant positions ('pos'), 
                 and the msprime tree sequence ('ts').
         """
+        self.params = {}
+        
         self.demography = self.make_demography()
                 
         # Prepare sample sizes
