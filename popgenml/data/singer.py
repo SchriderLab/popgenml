@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
+import glob
 import logging
 import tempfile
 import subprocess
 import numpy as np
+import tskit 
+
 from popgenml.data import write_vcf
 from popgenml.data.functions import harmonic_number
 
@@ -17,9 +20,10 @@ def singer(
     output_prefix: str,
     n_iters: int = 100,
     thin: int = 20
-) -> bool:
+) -> list:
     """
-    Writes alignment data to a temporary VCF and runs Singer.
+    Writes alignment data to a temporary VCF, runs Singer, and returns a list 
+    of the inferred tree sequences.
     
     Args:
         alignment: 2D numpy array of shape (num_haplotypes, num_sites).
@@ -33,7 +37,8 @@ def singer(
         thin: Thinning interval for Singer (default: 20).
         
     Returns:
-        True if Singer runs successfully, False otherwise.
+        A list of tskit.TreeSequence objects if Singer runs successfully, 
+        or an empty list if it fails.
     """
     num_haplotypes, num_sites = alignment.shape
     
@@ -73,15 +78,26 @@ def singer(
         try:
             subprocess.run(command, check=True)
             logging.info(f"Successfully finished running Singer. Outputs saved to {output_prefix}*")
-            return True
+            
+            # Locate all generated .trees files based on the prefix
+            tree_pattern = f"{output_prefix}*.trees"
+            infer_files = sorted(glob.glob(tree_pattern))
+            
+            # Load each outputted file into a tskit.TreeSequence
+            inferred_ts_list = []
+            for infer_file in infer_files:
+                infer_ts = tskit.load(infer_file)
+                inferred_ts_list.append(infer_ts)
+                
+            return inferred_ts_list
             
         except subprocess.CalledProcessError as e:
             logging.error(f"Singer failed. Error: {e}")
-            return False
+            return []
         except FileNotFoundError:
             logging.error(f"Could not find the executable at '{singer_executable}'. Please check the path.")
-            return False
+            return []
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
-            return False
+            return []
 
