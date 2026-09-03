@@ -639,7 +639,84 @@ class MSPrimeSimulator(BaseSimulator):
         result['mu'] = mu
         
         return result
+    
+import pyslim
 
+class SLiMSimulator(BaseSimulator):
+    """
+    A forward-time simulator utilizing SLiM to model explicit background selection.
+    Generates tree sequences that are compatible with the msprime mutation pipeline.
+    """
+    def __init__(self, config_file: str):
+        super().__init__(config_file)
+        # Store SLiM specific priors (e.g., DFE parameters)
+        priors = create_prior_from_config(self.config_path)
+        self.slim_priors = priors.get('slim', {})
+        
+    def write_slim_script(self, out_path: str, seed: int) -> str:
+        """
+        Dynamically builds a SLiM recipe configured for Background Selection (BGS).
+        """
+        # Extract BGS parameters with defaults
+        sh = self.slim_priors.get('dfe_shape', 0.186)
+        mu_s = self.slim_priors.get('dfe_mean', -0.013)
+        h = self.slim_priors.get('dominance', 0.5)
+        
+        # We assume a single population with fixed N0 for this basic BGS template
+        pop_name = list(self.samples.keys())[0]
+        N0 = self.samples[pop_name].get('N0', 1000)
+        
+        script = f"""
+        initialize() {{
+            initializeTreeSeq();
+            initializeMutationRate({self.mu});
+            initializeRecombinationRate({self.r});
+            
+            // m1 mutation type: deleterious, gamma DFE for BGS
+            initializeMutationType("m1", {h}, "g", {mu_s}, {sh});
+            
+            // g1 genomic element covers the entire sequence L
+            initializeGenomicElementType("g1", m1, 1.0);
+            initializeGenomicElement(g1, 0, {self.L - 1});
+        }}
+        
+        1 early() {{
+            sim.addSubpop("p1", {N0});
+        }}
+        
+        // Run for 10 * N0 generations to ensure mutation-selection balance
+        {int(10 * N0)} late() {{
+            sim.treeSeqOutput("{out_path}");
+            sim.simulationFinished();
+        }}
+        """
+        return script
+        
+    def simulate(self, verbose: bool = False, seeds: tuple = (None, None)) -> dict:
+        self.params = {}
+        
+        # 1. Create a temporary file to hold the SLiM output
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_trees = os.path.join(tmpdir, "out.trees")
+            script_path = os.path.join(tmpdir, "recipe.slim")
+            
+            # 2. Write the dynamic SLiM script
+            script_content = self.write_slim_script(out_trees, seeds[0])
+            with open(script_path, "w") as f:
+                f.write(script_content)
+                
+            # 3. Execute SLiM via subprocess
+            cmd = ["slim", "-s", str(seeds[0] if seeds[0] else 42), script_path]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL if not verbose else None)
+            
+            # 4. Load the resulting tree sequence using tskit
+            ts = tskit.load(out_trees)
+            
+        # 5. Overlay neutral mutations using msprime (if desired) and format output
+        # Assuming you have a mutate_and_return_ method inherited or defined similar to MSPrimeSimulator
+        ret = self.mutate_and_return_(ts, seed=seeds[1])
+        ret['r'] = self.r
+        return ret
 
 class DiscoalSimulator(BaseSimulator):
     """
