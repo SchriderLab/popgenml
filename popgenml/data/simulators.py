@@ -240,6 +240,88 @@ class ExponentialHistory(TargetedHistory):
         
         return self._scale_and_bound(raw_log_shape)
     
+from scipy.special import comb
+from scipy.optimize import minimize
+    
+def generate_polanski_kimmel_matrix(n):
+    """
+    Generates the W matrix mapping E[T_k] to E[t_i].
+    W has shape (n-1, n-1). Rows represent SFS bins i (1 to n-1).
+    Cols represent epochs k (2 to n).
+    """
+    W = np.zeros((n - 1, n - 1))
+    
+    for i_idx, i in enumerate(range(1, n)):          # SFS bins i = 1, ..., n-1
+        for k_idx, k in enumerate(range(2, n + 1)):  # Epochs k = 2, ..., n
+            # The probability formula for coalescent topologies
+            if 2 <= k <= n - i + 1:
+                W[i_idx, k_idx] = k * (comb(n - i - 1, k - 2) / comb(n - 1, k - 1))
+                
+    return W
+    
+class SFSTargetedHistory:
+    """
+    Abstract base class for optimizing parameterized demographic functions 
+    to match a target empirical SFS.
+    """
+    def __init__(self, target_sfs, n_haps, mu=1.5e-8, seq_len=2.5e6, T_max=200000, n_pts=1000):
+        self.target_sfs = np.array(target_sfs)
+        self.n_haps = n_haps
+        self.mu_L = mu * seq_len
+        self.T_max = T_max
+        
+        self.t_grid = np.geomspace(1, T_max + 1, n_pts) - 1 
+        self.W_matrix = generate_polanski_kimmel_matrix(n_haps)
+        self.P_k_func = self._precompute_kingman_states(n_haps)
+
+    def _precompute_kingman_states(self, n, tau_max=15.0, num_pts=1000):
+        # (Same ODE implementation as before)
+        tau_grid = np.linspace(0, tau_max, num_pts)
+        def kingman_odes(tau, P):
+            dP = np.zeros_like(P)
+            for k in range(2, n + 1):
+                rate_out = k * (k - 1) / 2.0
+                dP[k] = -rate_out * P[k]
+                if k < n:
+                    rate_in = (k + 1) * k / 2.0
+                    dP[k] += rate_in * P[k+1]
+            return dP
+        
+        P_init = np.zeros(n + 1)
+        P_init[n] = 1.0
+        sol = solve_ivp(kingman_odes, [0, tau_max], P_init, t_eval=tau_grid, method='BDF')
+        return interp1d(sol.t, sol.y[2:, :], kind='cubic', bounds_error=False, fill_value=0.0)
+
+    def build_Nt(self, coeffs):
+        """Must be implemented by subclasses to map coeffs -> N(t) over self.t_grid."""
+        raise NotImplementedError
+
+    def forward_sfs(self, coeffs):
+        """Maps arbitrary coefficients to the expected SFS."""
+        N_t = self.build_Nt(coeffs)
+        
+        inv_2N = 1.0 / (2.0 * N_t)
+        Lambda_t = cumulative_trapezoid(inv_2N, self.t_grid, initial=0)
+        
+        P_k_t = self.P_k_func(Lambda_t) 
+        E_T_k = simpson(y=P_k_t, x=self.t_grid, axis=1)
+        
+        expected_sfs = self.mu_L * (self.W_matrix @ E_T_k)
+        return expected_sfs, N_t
+
+    def _poisson_loss(self, coeffs):
+        pred_sfs, _ = self.forward_sfs(coeffs)
+        pred_sfs = np.clip(pred_sfs, 1e-9, None)
+        return np.sum(pred_sfs - self.target_sfs * np.log(pred_sfs))
+
+    def fit(self, init_coeffs, bounds=None):
+        print("Starting generalized gradient descent...")
+        res = minimize(self._poisson_loss, init_coeffs, bounds=bounds, 
+                       method='L-BFGS-B', options={'disp': True})
+        
+        optimal_sfs, optimal_Nt = self.forward_sfs(res.x)
+        return res.x, optimal_Nt, optimal_sfs
+    
 def _parse_prior_value(value_str: str, safe_globals: dict) -> Any:
     """Helper to parse a string from the config into a float, int, or distribution."""
     try:
