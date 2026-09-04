@@ -5,3 +5,5 @@ scikit-bio
 scikit-allel
 matplotlib
 cyvcf2
+ortools
+pyslim
