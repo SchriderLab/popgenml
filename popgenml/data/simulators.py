@@ -155,7 +155,7 @@ class TargetedHistory:
     """
     def __init__(self, target_snps=20000, n_haps=16, mu=1.5e-8, seq_len=2.5e6,
                  N_min=5000.0, N_max=100000.0, T_max_sim=200000, n_sim_epochs=100,
-                 T_max_math=2_000_000, n_math_pts=1000):
+                 T_max_math=2_000_000, n_math_pts=1000, ploidy = 2):
         
         self.target_Ln = target_snps / (mu * seq_len)
         self.N_min = N_min
@@ -168,6 +168,7 @@ class TargetedHistory:
         # 2. Simulation Grid: Coarser horizon for efficient msprime stepping
         self.t_sim = np.geomspace(1, T_max_sim + 1, n_sim_epochs) - 1
         
+        self.ploidy = ploidy
         self.expected_A_func = precompute_kingman_lineages(n_haps)
 
     def _scale_and_bound(self, raw_log_shape):
@@ -177,7 +178,7 @@ class TargetedHistory:
             N_t = self.N_min + squashed * (self.N_max - self.N_min)
             
             # Using 1.0 / (2.0 * N_t) assumes msprime uses ploidy=2 
-            inv_2N = 1.0 / (2.0 * N_t)
+            inv_2N = 1.0 / (self.ploidy * N_t)
             Lambda_t = cumulative_trapezoid(inv_2N, self.t_math, initial=0)
             
             expected_Ln = simpson(y=self.expected_A_func(Lambda_t), x=self.t_math)
