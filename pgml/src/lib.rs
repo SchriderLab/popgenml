@@ -17,7 +17,8 @@ pub enum RealWavelet {
     Gaussian { order: u32 },
     Shannon,
     Morlet { w0: f32 },
-    Haar, // Added Haar variant
+    Haar,
+    Smc, // Added Custom SMC Wavelet
 }
 
 // 2. The Python-facing Bridge Class
@@ -46,7 +47,12 @@ impl WaveletConfig {
 
     #[staticmethod]
     fn haar() -> Self {
-        Self { internal: RealWavelet::Haar } // Added Haar constructor
+        Self { internal: RealWavelet::Haar }
+    }
+
+    #[staticmethod]
+    fn smc() -> Self {
+        Self { internal: RealWavelet::Smc } // Added SMC constructor
     }
 }
 
@@ -100,6 +106,16 @@ impl RealWavelet {
                         1.0
                     } else if x >= 0.0 && x < 0.5 {
                         -1.0
+                    } else {
+                        0.0
+                    }
+                },
+                RealWavelet::Smc => {
+                    // First derivative of the double-exponential Laplace kernel
+                    if x > 0.0 {
+                        (-x).exp()
+                    } else if x < 0.0 {
+                        -(x.exp())
                     } else {
                         0.0
                     }
