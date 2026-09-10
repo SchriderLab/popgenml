@@ -1,6 +1,6 @@
 # Targeted Demographic Histories API Reference
 
-The `targeted_history` module provides utilities for sampling continuous demographic trajectories $N(t)$ calibrated to match a predetermined mutational budget (expected segregating sites $S$) while enforcing rigorous population size bounds. 
+The `popgenml.data.histories` module provides utilities for sampling continuous demographic trajectories $N(t)$ calibrated to match a predetermined mutational budget (expected segregating sites $S$) while enforcing rigorous population size bounds. 
 
 This is particularly useful for coalescent simulation workflows (e.g., using [`msprime`](https://tskit.dev/msprime/)) where demographic scenarios need to remain computationally tractable, biologically plausible, and normalized in terms of genetic diversity.
 
