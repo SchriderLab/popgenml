@@ -93,25 +93,5 @@ This section is for discoal specific arguments.
 
 ## Full Examples
 
-An example including migration:
-
 ```
-[base]
-mu = stats.uniform(loc=1e-9, scale=2e-8)
-r = 1e-8
-L = 100000
-
-[samples]
-# A diploid population with a variable size history defined by a spline
-pop1 = {'Nt': 'SplineHistory(N=stats.uniform(loc=10000, scale=140000), max_k=10)', 'n': 11, 'ploidy': 2}
-
-# A haploid population with a constant size drawn from a distribution
-pop2 = {'N0': 'stats.loguniform(a=1000, b=50000)', 'n': 20, 'ploidy': 2}
-
-[migration]
-# Migration from pop2 into pop1 starts at time 500 and stops at time 2000.
-pop1_pop2 = [(0.0, 0), (0.001, 500), (0.0, 2000)]
-
-# Migration from pop1 into pop2 is defined by a spline history.
-pop2_pop1 = SplineHistory(N=stats.uniform(0, 0.005))
 ```

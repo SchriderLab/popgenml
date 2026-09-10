@@ -36,6 +36,17 @@ Functions for computing statistics on binary popgen alignments.
    popgenml.data.stats.ld_stats
    popgenml.data.stats.het_diversity
    
+Prior specification
+-------------------
+
+.. autosummary::
+   :toctree: generated/
+   
+   popgenml.data.histories.TargetedHistory
+   popgenml.data.histories.ChebyshevHistory
+   popgenml.data.histories.ExponentialHistory
+   popgenml.data.histories.PiecewiseConstantHistory
+   
 Functions / Conversions
 -------------------------
 
