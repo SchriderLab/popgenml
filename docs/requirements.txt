@@ -21,3 +21,4 @@ scikit-allel
 myst-parser
 setuptools
 cyvcf2
+pyslim
