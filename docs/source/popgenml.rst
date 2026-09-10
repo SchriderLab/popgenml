@@ -39,13 +39,28 @@ Functions for computing statistics on binary popgen alignments.
 Prior specification
 -------------------
 
-.. autosummary::
-   :toctree: generated/
-   
-   popgenml.data.histories.TargetedHistory
-   popgenml.data.histories.ChebyshevHistory
-   popgenml.data.histories.ExponentialHistory
-   popgenml.data.histories.PiecewiseConstantHistory
+Prior specification
+-------------------
+
+.. autoclass:: popgenml.data.histories.TargetedHistory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.histories.ChebyshevHistory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.histories.ExponentialHistory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.histories.PiecewiseConstantHistory
+   :members:
+   :undoc-members:
+   :show-inheritance:
    
 Functions / Conversions
 -------------------------

@@ -53,6 +53,8 @@ exclude_patterns = []
 autosummary_generate = True
 autodoc_class_signature = "separated"
 
+autosummary_generate = True
+
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
