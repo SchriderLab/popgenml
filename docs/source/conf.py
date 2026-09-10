@@ -33,9 +33,16 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.autosummary',  # <-- Add this
     'sphinx_rtd_theme',
     'sphinx.ext.autodoc',
+    "sphinx.ext.napoleon",  # <-- ADD THIS
     'myst_parser',
     'sphinx.ext.mathjax',
 ]
+
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = True
+napoleon_use_param = True
+napoleon_use_rtype = True
 
 source_suffix = {
     '.rst': 'restructuredtext',
