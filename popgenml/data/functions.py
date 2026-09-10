@@ -14,7 +14,7 @@ def harmonic_number(n):
     return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
 
 def flip(arr):
-    """
+    r"""
     Flips columns of a binary array based on their sum.
 
     - If column sum > n/2, the column is flipped (1 -> 0, 0 -> 1).
@@ -61,7 +61,7 @@ def flip(arr):
 def newick_to_tree(
     string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None, multiplier = 1.
 ) -> tskit.TreeSequence:
-    """
+    r"""
     Create a tree sequence representation of the specified newick string.
 
     The tree sequence will contain a single tree, as specified by the newick. All
@@ -185,7 +185,7 @@ def newick_to_tree(
     return tables.tree_sequence()
 
 def compute_coalescent_inverses(times):
-    """
+    r"""
     Computes the inverse scaled time differences and midpoints for a list of times.
     
     Args:
@@ -225,7 +225,7 @@ def compute_coalescent_inverses(times):
     return inv_scaled_diffs, midpoints
 
 def tree_to_FW(tree: tskit.Tree):
-    """
+    r"""
     Calculates F and W matrices from a tskit Tree object.
 
     This function is an adaptation of the original code that worked with
@@ -293,7 +293,7 @@ def tree_to_FW(tree: tskit.Tree):
     return F[i, j], W, s
 
 def tree_to_graph(tree, n = 200):
-    """
+    r"""
     Convert a TSKit tree into a node feature array and edge list (graph representation).
 
     This function converts a binary tree into a graph format suitable for machine learning models.
@@ -344,7 +344,7 @@ def tree_to_graph(tree, n = 200):
     return np.array(X), edge_index
 
 def graph_to_tree(x, edges, offset = 0.01):
-    """
+    r"""
     Convert node features and edges into a TSKit tree.
 
     This function builds a tree from graph data, where node times are used to reconstruct coalescent events.
@@ -396,7 +396,7 @@ def graph_to_tree(x, edges, offset = 0.01):
     return ts_tree
 
 def distmat_to_tree(D, metric = 'euclidean', method = 'single', transform = None):
-    """
+    r"""
     Construct a TSKit tree from a distance matrix using hierarchical clustering.
 
     Parameters:
@@ -427,7 +427,7 @@ def distmat_to_tree(D, metric = 'euclidean', method = 'single', transform = None
     return graph_to_tree(x, edges), Z
 
 def tree_to_distmat(tree, node_dict = None):
-    """
+    r"""
     Convert a TSKit tree into a condensed genealogical distance matrix.
 
     This function computes the pairwise genealogical distances between all sample nodes
@@ -456,7 +456,7 @@ def tree_to_distmat(tree, node_dict = None):
     return D
     
 def pad_sequences(sequences, max_length=None, padding_value=0):
-    """
+    r"""
     Pad a list of 2D arrays (sequences) to the same number of rows (sites) using a given padding value.
 
     Parameters:
@@ -717,7 +717,7 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
 def seriate_ortools(data: np.ndarray, metric: str = 'euclidean', scale_factor: float = 1e5) -> tuple[np.ndarray, list[int]]:
-    """
+    r"""
     Seriates a 2D numpy array by ordering its rows based on similarity.
     
     Args:
@@ -797,7 +797,7 @@ def seriate_ortools(data: np.ndarray, metric: str = 'euclidean', scale_factor: f
     return data[order], order
 
 def seriate_spectral(x, C): 
-    """
+    r"""
     Reorder rows in a matrix using spectral seriation (Fiedler vector approach).
 
     Parameters:
@@ -821,7 +821,7 @@ def seriate_spectral(x, C):
     return x, ix
 
 def chamfer_distance_1d(set_a, set_b):
-    """
+    r"""
     Calculates the 1D Chamfer distance between two sets of points.
 
     Args:
