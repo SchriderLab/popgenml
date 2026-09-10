@@ -55,6 +55,12 @@ autodoc_class_signature = "separated"
 
 autosummary_generate = True
 
+autodoc_mock_imports = [
+    "numpy",
+    "scipy",
+    "msprime",
+]
+
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
