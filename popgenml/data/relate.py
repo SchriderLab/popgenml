@@ -2,8 +2,8 @@
 
 import os
 import tempfile
-from popgenml.data.io_ import write_to_ms
-from popgenml.data.trees import PGTreeSequence
+from .io_ import write_to_ms
+from .trees import PGTreeSequence
 
 import time
 import copy

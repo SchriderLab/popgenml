@@ -19,3 +19,4 @@ networkx
 scikit-allel
 myst-parser
 setuptools
+cyvcf2
