@@ -60,6 +60,67 @@ Prior specification
    :undoc-members:
    :show-inheritance:
    
+Transforms
+---------------
+
+Classes for transforming tree sequences, haplotype alignments, and calculating windowed summary statistics.
+
+Tree Sequence Transforms
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: popgenml.data.transforms.TSTransform
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.SiteDistanceMatrixTransform
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+Alignment Transforms
+~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: popgenml.data.transforms.AlignmentTransform
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.Compose
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.FastSeriate
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.ORToolsSeriate
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.Flip
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.RandomSampleShuffle
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.PadCrop
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+
+.. autoclass:: popgenml.data.transforms.WindowedStats
+   :members:
+   :special-members: __call__
+   :show-inheritance:
+   
 Functions / Conversions
 -------------------------
 
