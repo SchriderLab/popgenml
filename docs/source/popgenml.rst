@@ -1,9 +1,7 @@
 .. _popgenml:
 
-popgenml
+API
 ==============
-
-API reference.
 
 Simulators
 ---------------
