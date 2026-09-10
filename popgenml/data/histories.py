@@ -31,13 +31,13 @@ def precompute_kingman_lineages(n, tau_max=15.0, num_pts=1000):
     return interp1d(sol.t, expected_lineages, kind='cubic', bounds_error=False, fill_value=0.0)
 
 class TargetedHistory:
-    """
+    r"""
     Base class for calibrating demographic trajectories to a target expected tree length.
 
     This class samples or shifts continuous effective population size trajectories
     $N(t)$ such that the expected total branch length $E[L_n]$ matches a specified
-    mutational budget ($\text{target\_snps} / (\mu \times \text{seq\_len})$).
-    
+    mutational budget.
+
     The trajectory is bounded strictly within $[N_{\min}, N_{\max}]$ via a logistic
     transform (expit), and root-finding (Brent's method) is applied across Kingman 
     coalescent integrals over a high-resolution mathematical time grid before 
@@ -58,32 +58,28 @@ class TargetedHistory:
     N_max : float, default=100000.0
         Upper bound for diploid effective population size $N(t)$.
     T_max_sim : int or float, default=200000
-        Maximum time horizon (in generations backwards in time) for the 
-        simulation epoch grid.
+        Maximum time horizon for the simulation epoch grid.
     n_sim_epochs : int, default=100
         Number of discrete time breakpoints across the simulation grid.
     T_max_math : int or float, default=2_000_000
-        Extended backwards time horizon used for numerical coalescent integrals 
-        to guarantee absorption of all lineages to $A(t) \to 1$.
+        Extended backwards time horizon used for numerical coalescent integrals.
     n_math_pts : int, default=1000
         Number of integration points across the extended mathematical grid.
     ploidy : int, default=2
-        Ploidy of the organism (typically 2 for diploids), setting the coalescent
-        intensity denominator $\text{ploidy} \times N(t)$.
+        Ploidy of the organism.
 
     Attributes
     ----------
     target_Ln : float
-        Target expected total tree length $E[L_n] = \frac{\text{target\_snps}}{\mu \times \text{seq\_len}}$.
+        Target expected total tree length.
     t_math : ndarray of shape (n_math_pts,)
-        Geometrically spaced time grid spanning $[0, T_{\text{max\_math}}]$.
+        Geometrically spaced time grid.
     x_math : ndarray of shape (n_math_pts,)
-        Time values normalized to $[-1, 1]$ for orthogonal polynomial evaluations.
+        Time values normalized to $[-1, 1]$.
     t_sim : ndarray of shape (n_sim_epochs,)
-        Geometrically spaced time grid spanning $[0, T_{\text{max\_sim}}]$ for simulation.
+        Geometrically spaced time grid for simulation.
     expected_A_func : callable
-        Precomputed function returning expected lineage counts $E[A_n(t)]$ 
-        as a function of cumulative coalescent intensity $\Lambda(t)$.
+        Precomputed lineage function.
     """
 
     def __init__(self, target_snps=20000, n_haps=16, mu=1.5e-8, seq_len=2.5e6,
@@ -105,7 +101,7 @@ class TargetedHistory:
         self.expected_A_func = precompute_kingman_lineages(n_haps)
 
     def _scale_and_bound(self, raw_log_shape):
-        """
+        r"""
         Calibrate and project an unconstrained trajectory onto the simulation grid.
 
         Applies an additive log-shift $c$ to an arbitrary unconstrained trajectory 
@@ -162,7 +158,7 @@ class TargetedHistory:
 
 
 class ChebyshevHistory(TargetedHistory):
-    """
+    r"""
     Demographic history sampler using randomized Chebyshev polynomial series.
 
     Generates smoothly oscillating historical demographic trajectories by drawing
@@ -187,7 +183,7 @@ class ChebyshevHistory(TargetedHistory):
         self.volatility = volatility
 
     def sample_curve(self):
-        """
+        r"""
         Sample a random Chebyshev trajectory and scale it to target specifications.
 
         Returns
@@ -208,7 +204,7 @@ class ChebyshevHistory(TargetedHistory):
 
 
 class ExponentialHistory(TargetedHistory):
-    """
+    r"""
     Demographic history sampler modeling continuous exponential growth or decay.
 
     Draws an exponential rate $r$ log-uniformly over an interval and applies
@@ -232,7 +228,7 @@ class ExponentialHistory(TargetedHistory):
         self.abs_r_max = abs_r_max
 
     def sample_curve(self):
-        """
+        r"""
         Sample an exponential growth or decline trajectory and scale to target specifications.
 
         Draws $|r| \sim \text{LogUniform}(\text{abs\_r\_min}, \text{abs\_r\_max})$ and assigns
@@ -262,7 +258,7 @@ class ExponentialHistory(TargetedHistory):
         return self._scale_and_bound(raw_log_shape)
 
 class PiecewiseConstantHistory(TargetedHistory):
-    """
+    r"""
     Demographic history sampler modeling piecewise-constant population epochs.
 
     Samples epoch change points (knots) uniformly across the simulation time
@@ -291,7 +287,7 @@ class PiecewiseConstantHistory(TargetedHistory):
         self.T_knot_max = self.t_sim[-1] if T_knot_max is None else float(T_knot_max)
 
     def sample_curve(self):
-        """
+        r"""
         Sample a piecewise-constant step trajectory and scale to target specifications.
 
         Selects `num_epochs - 1` knot times uniformly over `(0, T_knot_max)` and
@@ -341,7 +337,7 @@ from scipy.optimize import minimize
     
     
 def generate_polanski_kimmel_matrix(n):
-    """
+    r"""
     Generate the Polanski and Kimmel (2005) combinatorial transformation matrix.
 
     Computes the transition matrix $\mathbf{W} \in \mathbb{R}^{(n-1) \times (n-1)}$ 
@@ -390,7 +386,7 @@ def generate_polanski_kimmel_matrix(n):
 
 
 class SFSTargetedHistory:
-    """
+    r"""
     Abstract base class for fitting continuous demographic histories to an empirical SFS.
 
     Optimizes the parameters of an effective population trajectory $N(t)$ to match 
@@ -456,7 +452,7 @@ class SFSTargetedHistory:
         self.P_k_func = self._precompute_kingman_states(n_haps)
 
     def _precompute_kingman_states(self, n, tau_max=15.0, num_pts=1000):
-        """
+        r"""
         Solve the pure-death CTMC ODEs for Kingman coalescent lineage distributions.
 
         Solves the system $\frac{d P_k(\tau)}{d\tau} = -\binom{k}{2} P_k(\tau) + \binom{k+1}{2} P_{k+1}(\tau)$
@@ -494,7 +490,7 @@ class SFSTargetedHistory:
         return interp1d(sol.t, sol.y[2:, :], kind='cubic', bounds_error=False, fill_value=0.0)
 
     def build_Nt(self, coeffs):
-        """
+        r"""
         Map optimization coefficients to an effective population size curve over `t_grid`.
 
         Parameters
@@ -515,7 +511,7 @@ class SFSTargetedHistory:
         raise NotImplementedError
 
     def forward_sfs(self, coeffs):
-        """
+        r"""
         Compute the expected SFS and population trajectory for a given parameter set.
 
         Computes cumulative coalescent intensity $\Lambda(t)$, extracts state probabilities 
@@ -546,7 +542,7 @@ class SFSTargetedHistory:
         return expected_sfs, N_t
 
     def _poisson_loss(self, coeffs):
-        """
+        r"""
         Negative Poisson composite log-likelihood loss (omitting data log-factorials).
 
         $$\mathcal{L}(\boldsymbol{\theta}) = \sum_{i=1}^{n-1} \left( \lambda_i(\boldsymbol{\theta}) - S_i \ln \lambda_i(\boldsymbol{\theta}) \right)$$
@@ -566,7 +562,7 @@ class SFSTargetedHistory:
         return np.sum(pred_sfs - self.target_sfs * np.log(pred_sfs))
 
     def fit(self, init_coeffs, bounds=None):
-        """
+        r"""
         Fit demographic parameters to the empirical SFS using L-BFGS-B optimization.
 
         Parameters
@@ -594,7 +590,7 @@ class SFSTargetedHistory:
 
 
 class ChebyshevSFSHistory(SFSTargetedHistory):
-    """
+    r"""
     Demographic inference engine parameterizing $N(t)$ via Chebyshev polynomials.
 
     Fits smooth historical population size changes to an SFS by mapping the 
@@ -633,7 +629,7 @@ class ChebyshevSFSHistory(SFSTargetedHistory):
         self.x_grid = 2.0 * (self.t_grid / self.T_max) - 1.0
 
     def build_Nt(self, coeffs):
-        """
+        r"""
         Reconstruct the bounded demographic curve $N(t)$ from Chebyshev coefficients.
 
         Evaluates the Chebyshev polynomial expansion $f(x) = \sum_{j=0}^{M-1} c_j T_j(x)$
@@ -662,7 +658,7 @@ class ChebyshevSFSHistory(SFSTargetedHistory):
 
 
 class ExponentialSFSHistory(SFSTargetedHistory):
-    """
+    r"""
     Demographic inference engine parameterizing $N(t)$ via exponential growth/decay.
 
     Fits a two-parameter model consisting of an initial vertical logit offset 
@@ -689,7 +685,7 @@ class ExponentialSFSHistory(SFSTargetedHistory):
         self.N_max = N_max
 
     def build_Nt(self, coeffs):
-        """
+        r"""
         Reconstruct the bounded demographic curve $N(t)$ from exponential parameters.
 
         Computes the unconstrained linear shape in logit space backwards in time:

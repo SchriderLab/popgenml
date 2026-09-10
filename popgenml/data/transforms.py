@@ -13,7 +13,7 @@ from .functions import (
     seriate_spectral,
     tree_to_distmat,
 )
-import .stats as pg_stats
+from . import stats as pg_stats
 
 
 class TSTransform:
