@@ -34,12 +34,19 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx_rtd_theme',
     'sphinx.ext.autodoc',
     'myst_parser',
+    'sphinx.ext.mathjax',
 ]
 
 source_suffix = {
     '.rst': 'restructuredtext',
     '.md': 'markdown',
 }
+
+# Enable standard LaTeX dollar syntax in Markdown
+myst_enable_extensions = [
+    "dollarmath",
+    "amsmath",
+]
 
 templates_path = ['_templates']
 exclude_patterns = []
