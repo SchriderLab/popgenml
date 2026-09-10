@@ -36,8 +36,6 @@ Functions for computing statistics on binary popgen alignments.
    popgenml.data.stats.ld_stats
    popgenml.data.stats.het_diversity
    
-Prior specification
--------------------
 
 Prior specification
 -------------------
