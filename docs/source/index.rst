@@ -16,7 +16,15 @@ Python package to assist with machine learning research in population genetics. 
    introduction
    popgenml
    config-files
-   demo_histories
+   histories
+
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials:
+
+   recombination_tutorial
+
 
 Indices and tables
 ==================
@@ -24,4 +32,5 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
 
