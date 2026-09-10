@@ -29,6 +29,7 @@ release = '0.1'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = ['sphinx.ext.autodoc',
+    "sphinx_math_dollar",      # Must come BEFORE mathjax
     'sphinx.ext.napoleon', # For NumPy/Google style docstrings
     'sphinx.ext.autosummary',  # <-- Add this
     'sphinx_rtd_theme',

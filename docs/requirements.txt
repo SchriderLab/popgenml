@@ -15,6 +15,7 @@ demesdraw
 newick
 jupyter
 sphinx_rtd_theme
+sphinx-math-dollar
 networkx
 scikit-allel
 myst-parser
