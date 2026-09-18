@@ -15,9 +15,9 @@ import importlib.resources
 RELATE_PATH = 'Relate'
 
 # Grab the file path from the package and convert the Traversable object to a string
-rscript_path = str(importlib.resources.files('popgenml').joinpath('scripts', 'ms2haps.R'))
+rscript_path = str(importlib.resources.files('popgenml').joinpath('scripts', 'ms2haps.py'))
 
-rcmd = 'cd {3} && Rscript ' + rscript_path + ' {0} {1} {2}'
+rcmd = 'cd {3} && python3 ' + rscript_path + ' {0} {1} {2}'
 relate_cmd = 'cd {6} && ' + RELATE_PATH + ' --mode {7} -m {0} -N {1} --haps {2} --sample {3} --map {4} --output {5}'
 
 def make_FW_rep(root, sample_sizes):
