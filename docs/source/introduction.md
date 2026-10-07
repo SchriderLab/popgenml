@@ -10,7 +10,7 @@ Includes support for popular popgen simulators:
 
 Python wrappings for popular inference routines:
 
-* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference (<https://myersgroup.github.io/relate/index.html>)
+* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference
 * [SINGER](https://github.com/popgenmethods/SINGER) - tree sequence inference
 
 Formatting routines:

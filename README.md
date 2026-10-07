@@ -11,7 +11,7 @@ Includes support for popular popgen simulators:
 
 Python wrappings for popular inference routines:
 
-* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference (<https://myersgroup.github.io/relate/index.html>)
+* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference
 * [SINGER](https://github.com/popgenmethods/SINGER) - tree sequence inference
 
 Formatting routines:
@@ -28,7 +28,7 @@ Inference models:
 * UNet from (https://pmc.ncbi.nlm.nih.gov/articles/PMC9979274/)
 * GCN models from (https://academic.oup.com/mbe/article/41/11/msae223/7845315)
 
-See the tutorials folder for examples as Jupyter notebooks.  The documentation and API reference can be found at https://popgenml.readthedocs.io/en/latest/
+See the [tutorials](https://github.com/SchriderLab/popgenml/tree/main/tutorials/) folder for examples as Jupyter notebooks.  The documentation and API reference can be found at https://popgenml.readthedocs.io/en/latest/
 
 ## Installation
 
