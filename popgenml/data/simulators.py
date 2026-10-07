@@ -17,6 +17,7 @@ import math
 import ast
 import shlex
 import sys
+import tskit
 # scipy.stats._distn_infrastructure.rv_continuous and rv_discrete are the base classes
 # for continuous and discrete distributions, respectively.
 # We use this for type hinting to make the code clearer.
@@ -702,7 +703,7 @@ class DiscoalSimulator(BaseSimulator):
             self.x = None
             self.args = None
 
-    def simulate(self, verbose: bool = False) -> dict:
+    def simulate(self, verbose: bool = False, seeds = None) -> dict:
         r"""
         Construct the discoal command string and execute the simulation.
 
@@ -804,6 +805,11 @@ class DiscoalSimulator(BaseSimulator):
         if self.x is not None:
             x = self.x if isinstance(self.x, float) else self.x.rvs(size=1)[0]
             cmd = ' '.join((cmd, f'-x {x}'))
+            
+        if seeds is not None:
+            s1, s2 = seeds
+            
+            cmd = ' '.join((cmd, '-d {} {}'.format(s1, s2)))
 
         if verbose:
             print(cmd)

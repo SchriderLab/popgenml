@@ -57,8 +57,8 @@ def singer(
     L: float,
     mutation_rate: float,
     recomb_rate: float,
-    singer_dir: str,
     output_prefix: str,
+    singer_dir = None,
     n_iters: int = 100,
     thin: int = 20
 ) -> Iterator[tskit.TreeSequence]:
