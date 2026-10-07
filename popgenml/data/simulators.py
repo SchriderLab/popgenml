@@ -138,20 +138,27 @@ def _parse_prior_value(value_str: str, safe_globals: dict) -> Any:
             except Exception as e:
                 raise ValueError(f"Could not parse value: '{value_str}'. Error: {e}")
 
-def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
+def create_prior_from_config(config_source: str) -> Dict[str, Dict[str, Any]]:
     """
-    Creates a nested dictionary of priors from a Python config file.
+    Creates a nested dictionary of priors from a Python config file or raw INI string.
 
     Args:
-        config_path (str): The path to the .ini configuration file.
+        config_source (str): The path to the .ini configuration file OR a raw string 
+                             containing the INI-formatted configuration.
 
     Returns:
-        A dictionary with 'base' and 'samples' keys, containing the parsed priors.
+        A dictionary with 'base' and 'samples' keys (among others), containing the parsed priors.
     """
     config = configparser.ConfigParser()
-    config.read(config_path)
+    
+    # Detect if the input is a raw string (contains newlines or INI brackets) or a file path
+    if '\n' in config_source or config_source.strip().startswith('['):
+        config.read_string(config_source)
+    else:
+        config.read(config_source)
 
     # Define a safe context for eval(), allowing access to 'stats' and custom classes.
+    # (Ensure these are defined/imported in the actual script)
     safe_globals = {
         'stats': stats,
         'math' : math,
@@ -183,7 +190,6 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
             for key in pop_config.keys():
                 pop_config[key] = _parse_prior_value(pop_config[key], safe_globals)
             
-
             # Assign it to the correct nested structure
             priors['samples'][pop_name] = pop_config
     
@@ -213,44 +219,42 @@ def create_prior_from_config(config_path: str) -> Dict[str, Dict[str, Any]]:
         
     return priors
         
-import msprime
-import numpy as np
-import subprocess
-import re
-
-# Note: create_prior_from_config and newick_to_tree are assumed to be defined elsewhere in your module.
 
 class BaseSimulator:
     """
     A base simulator class that loads parameters and validated sample population priors
-    directly from a configuration file.
+    directly from a configuration file or a raw INI-formatted string.
 
     This class serves as the foundation for specific simulation engines (like msprime 
     or discoal), handling the boilerplate of parsing demographics, sample sizes, and 
     mutation/recombination rates.
     """
-    def __init__(self, config_path: str, seed=None):
+    def __init__(self, config_source: str, seeds: dict | None = None):
         """
-        Initializes the BaseSimulator from a configuration file.
+        Initializes the BaseSimulator from a configuration file or INI string.
 
         Args:
-            config_path (str): The path to the .ini configuration file.
-            seed (int, optional): Random seed for reproducibility. Defaults to None.
+            config_source (str): The path to the .ini configuration file, or a raw 
+                                 string containing the INI configuration.
+            seeds (dict, optional): A dictionary of random seeds for specific draws, 
+                                    keyed by values mapped in the configuration file. 
+                                    Defaults to None.
 
         Raises:
             KeyError: If a required key (e.g., 'mu', 'r', 'l', 'ploidy') is missing.
             TypeError: If a value has an incorrect type (e.g., L or ploidy not integers).
             ValueError: If a value is out of the allowed range (e.g., ploidy not in [1, 2]).
         """
-        self.seed = seed
-        self.config_path = config_path
+        self.seeds = seeds
+        self.config_source = config_source
         
         self._instant()
         
     # instantiate prior (need to run each time)
     def _instant(self):
-        # --- Create priors from the config file ---
-        priors = create_prior_from_config(self.config_path)
+        # --- Create priors from the config file or string ---
+        priors = create_prior_from_config(self.config_source)
+        
         base_priors = priors['base']
         sample_priors = priors['samples']
         self.migration_priors = priors['migration']
@@ -306,16 +310,17 @@ class BaseSimulator:
         # to store parameter values from make_demography:
         self.params = {}
 
-    def set_seed(self, seed: int):
+    def set_seeds(self, seeds: dict | None):
         """
-        Sets the random seed for the simulator.
+        Sets the random seeds for the simulator.
 
         Args:
-            seed (int): The seed value to ensure reproducible simulations.
+            seeds (dict | None): A dictionary of random seeds for specific draws, 
+                                 keyed by values mapped in the configuration file, 
+                                 to ensure reproducibility across specific components.
         """
-        self.seed = seed
-            
-
+        self.seeds = seeds
+        
 class MSPrimeSimulator(BaseSimulator):
     r"""
     A simulator engine utilizing the ``msprime`` library for coalescent simulation.
@@ -377,7 +382,12 @@ class MSPrimeSimulator(BaseSimulator):
                     demography.add_population(name=pop_name, initial_size=N0)
                 # If N0 is a distribution (random variable)
                 else:
-                    N0 = N0.rvs(size=1)[0]
+                    seed_ = None
+                    if self.seeds:
+                        if 'N0' in self.seeds.keys():
+                            seed_ = self.seeds['N0']
+                    
+                    N0 = N0.rvs(size=1, random_state = seed_)[0]
                     demography.add_population(name=pop_name, initial_size=N0)
 
                 self.params['N0'] = N0
@@ -395,7 +405,12 @@ class MSPrimeSimulator(BaseSimulator):
                     demography.add_population(name=pop_name, initial_size=Nt)
                 # If Nt is a continuous curve distribution
                 else:
-                    t, N = Nt.sample_curve()
+                    seed_ = None
+                    if self.seeds:
+                        if 'Nt' in self.seeds.keys():
+                            seed_ = self.seeds['Nt']
+                    
+                    t, N = Nt.sample_curve(seed_)
                     demography.add_population(name=pop_name, initial_size=N[0])
                     for N1, T in zip(N, t):
                         demography.add_population_parameters_change(time=T, population=pop_name, initial_size=N1)
@@ -415,10 +430,7 @@ class MSPrimeSimulator(BaseSimulator):
                         demography.add_migration_rate_change(time=t_, source=src, dest=dst, rate=m_)
                 elif isinstance(m, float):
                     demography.add_migration_rate_change(time=0.0, source=src, dest=dst, rate=m)
-                else:
-                    T, M = m.sample_curve()
-                    for m_, t_ in zip(M, T):
-                        demography.add_migration_rate_change(time=t_, source=src, dest=dst, rate=m_)
+                
 
         # 3. Add population splits (demography priors)
         if self.demography_priors:
@@ -430,7 +442,12 @@ class MSPrimeSimulator(BaseSimulator):
                 if isinstance(T, float):
                     demography.add_population_split(time=T, derived=[c1, c2], ancestral=p)
                 else:
-                    T = T.rvs(size=1)[0]
+                    seed_ = None
+                    if self.seeds:
+                        if key in self.seeds.keys():
+                            seed_ = self.seeds[key]
+                    
+                    T = T.rvs(size=1, random_state = seed_)[0]
                     demography.add_population_split(time=T, derived=[c1, c2], ancestral=p)
 
         # Sort events chronologically to satisfy msprime requirements
@@ -477,28 +494,15 @@ class MSPrimeSimulator(BaseSimulator):
         for pop in self.samples.keys():
             samples[pop] = self.samples[pop]['n']
 
-        # experimental feature...
-        ancestry_model = None
-        if self.sweep_priors:
-            sweep_kwargs = {}
-            for key, val in self.sweep_priors.items():
-                # Check if the parameter is a scipy.stats distribution
-                if hasattr(val, 'rvs'):
-                    drawn_val = val.rvs(size=1)[0]
-                    sweep_kwargs[key] = drawn_val
-                    self.params[f'sweep_{key}'] = drawn_val
-                else:
-                    sweep_kwargs[key] = val
-                    self.params[f'sweep_{key}'] = val
-
-            # Combine the sweep model with the standard coalescent
-            sweep_model = msprime.SweepGenicSelection(**sweep_kwargs)
-            ancestry_model = [sweep_model, msprime.StandardCoalescent()]
-
         # Resolve recombination rate (fixed or sampled)
         if isinstance(self.r, float):
             r = self.r
         else:
+            seed_ = None
+            if self.seeds:
+                if 'r' in self.seeds.keys():
+                    seed_ = self.seeds['r']
+            
             r = self.r.rvs(size=1)[0]
             # add to the dictionary if randomly drawn
             self.params['r'] = r
@@ -510,7 +514,6 @@ class MSPrimeSimulator(BaseSimulator):
             recombination_rate=r,
             ploidy=self.ploidy,
             demography=self.demography,
-            model=ancestry_model,
             random_seed=seeds[0],
         )
 
@@ -555,7 +558,12 @@ class MSPrimeSimulator(BaseSimulator):
         if isinstance(self.mu, float):
             mu = self.mu
         else:
-            mu = self.mu.rvs(size=1)[0]
+            seed_ = None
+            if self.seeds:
+                if 'mu' in self.seeds.keys():
+                    seed_ = self.seeds['mu']
+            
+            mu = self.mu.rvs(size=1, random_state = seed_)[0]
             # add to the dictionary if randomly drawn
             self.params['mu'] = mu
 
@@ -738,12 +746,22 @@ class DiscoalSimulator(BaseSimulator):
             if 'N0' in self.samples[pop_name].keys() and ('Nt' not in self.samples[pop_name].keys()):
                 N0 = self.samples[pop_name]['N0']
                 if not isinstance(N0, (float, int)):
-                    N0 = N0.rvs(size=1)[0]
+                    seed_ = None
+                    if self.seeds:
+                        if 'N0' in self.seeds.keys():
+                            seed_ = self.seeds['N0']
+                    
+                    N0 = N0.rvs(size=1, random_state = seed_)[0]
                 Nt = None
             elif 'Nt' in self.samples[pop_name].keys():
                 Nt = self.samples[pop_name]['Nt']
                 if not isinstance(Nt, list):
-                    t, N = Nt.sample_curve()
+                    seed_ = None
+                    if self.seeds:
+                        if 'r' in self.seeds.keys():
+                            seed_ = self.seeds['r']
+                    
+                    t, N = Nt.sample_curve(seed_)
                     Nt = list(zip(N, t))
                 N0 = Nt[0][0]
 
@@ -753,32 +771,49 @@ class DiscoalSimulator(BaseSimulator):
 
             pops.append((N0, Nt, n))
 
-        # Use the first population's N0 as the reference size for scaling
+        # use the first population's N0 as the reference size for scaling
         N0 = pops[0][0]
         self.N = N0
 
-        # Resolve recombination and mutation rates
-        r = self.r if isinstance(self.r, float) else self.r.rvs(size=1)[0]
-        mu = self.mu if isinstance(self.mu, float) else self.mu.rvs(size=1)[0]
+        # get recombination and mutation rates
+        if isinstance(self.r, float):
+            r = self.r
+        else:
+            seed_ = None
+            if self.seeds:
+                if 'r' in self.seeds.keys():
+                    seed_ = self.seeds['r']
+                    
+            r = self.r.rvs(size = 1, random_state = seed_)[0]
+        
+        if isinstance(self.mu, float):
+            mu = self.mu
+        else:
+            seed_ = None
+            if self.seeds:
+                if 'mu' in self.seeds.keys():
+                    seed_ = self.seeds['mu']
+                    
+            mu = self.mu.rvs(size = 1, random_state = seed_)[0]
 
-        # Calculate scaled population genetic parameters
+        # get scaled population genetic parameters
         theta = 4 * N0 * self.L * mu
         rho = 4 * N0 * self.L * r
 
         total_n = sum([u[-1] for u in pops])
 
-        # 2. Construct the base discoal command
+        # base discoal command
         cmd = f'discoal {total_n} 1 100001 -t {theta} -r {rho} -T'
 
         if len(pops) > 1:
             cmd += f" -p {len(pops)} " + ' '.join([str(u[-1]) for u in pops])
 
-        # 3. Add population size changes scaling relative to N0
+        # add population size changes scaling relative to N0
         size_strs = []
         for ix, pop in enumerate(pops):
             N0_, Nt, n = pop
 
-            # Subpopulations (ix > 0) split off from the ancestral population
+            # subpopulations (ix > 0) split off from the ancestral population
             if ix > 0:
                 pop_size_str = f' -en 0.0 {ix} {N0_ / N0}'
             else:
@@ -793,7 +828,7 @@ class DiscoalSimulator(BaseSimulator):
 
         cmd = ' '.join([cmd] + size_strs)
 
-        # 4. Add selection flags and raw arguments
+        # add selection flags and raw arguments
         if self.args is not None:
             cmd = ' '.join((cmd, self.args))
 
@@ -817,7 +852,6 @@ class DiscoalSimulator(BaseSimulator):
 
         self.co = cmd
 
-        # Execute and parse
         return self.run_and_parse_cmd_(cmd)
 
     def run_and_parse_cmd_(self, cmd_: str) -> dict:

@@ -99,6 +99,17 @@ class TargetedHistory:
         
         self.ploidy = ploidy
         self.expected_A_func = precompute_kingman_lineages(n_haps)
+        
+
+    def sample_curve(self, seed: int | None = None):
+        np.random.seed(seed)
+        
+        ret = self.sample_curve_()
+        
+        # set the seed back to random
+        np.random.seed(None)
+        
+        return ret
 
     def _scale_and_bound(self, raw_log_shape):
         r"""
@@ -182,7 +193,7 @@ class ChebyshevHistory(TargetedHistory):
         self.num_coeffs = num_coeffs
         self.volatility = volatility
 
-    def sample_curve(self):
+    def sample_curve_(self, seed: int = None):
         r"""
         Sample a random Chebyshev trajectory and scale it to target specifications.
 
@@ -195,7 +206,12 @@ class ChebyshevHistory(TargetedHistory):
         """
         # Decaying variance limits aggressive high-frequency oscillations
         variances = np.array([self.volatility / (j + 1)**0.5 for j in range(self.num_coeffs)])
+        
+        if seed:
+            np.random.seed(seed)
+        
         coeffs = np.random.randn(self.num_coeffs) * variances
+        np.random.seed(None)
         
         # Evaluate on the massive math grid
         raw_log_shape = chebval(self.x_math, coeffs)
@@ -227,7 +243,7 @@ class ExponentialHistory(TargetedHistory):
         self.abs_r_min = abs_r_min
         self.abs_r_max = abs_r_max
 
-    def sample_curve(self):
+    def sample_curve_(self):
         r"""
         Sample an exponential growth or decline trajectory and scale to target specifications.
 
@@ -286,7 +302,7 @@ class PiecewiseConstantHistory(TargetedHistory):
         # Knot times default to the simulation horizon if not explicitly specified
         self.T_knot_max = self.t_sim[-1] if T_knot_max is None else float(T_knot_max)
 
-    def sample_curve(self):
+    def sample_curve_(self):
         r"""
         Sample a piecewise-constant step trajectory and scale to target specifications.
 
@@ -384,210 +400,120 @@ def generate_polanski_kimmel_matrix(n):
                 
     return W
 
-
 class SFSTargetedHistory:
-    r"""
-    Abstract base class for fitting continuous demographic histories to an empirical SFS.
-
-    Optimizes the parameters of an effective population trajectory $N(t)$ to match 
-    a target Site Frequency Spectrum (SFS) using composite Poisson maximum 
-    likelihood under the variable-population Kingman coalescent.
-
-    Lineage state occupancy distributions $\mathbb{P}(A_n(t) = k)$ are solved 
-    over coalescent units $\tau(t) = \int_0^t \frac{1}{\text{ploidy} \cdot N(u)} du$ 
-    via Kingman death-process continuous-time Markov chain (CTMC) ODEs. The expected 
-    epoch times $\mathbb{E}[T_k]$ are then projected into expected SFS entries 
-    using the Polanski-Kimmel matrix $\mathbf{W}$.
-
-    Parameters
-    ----------
-    target_sfs : array_like of shape (n_haps - 1,)
-        Empirical site frequency spectrum counts across derived allele frequency 
-        bins $i \in \{1, \dots, n_{\text{haps}} - 1\}$.
-    n_haps : int
-        Total number of sampled haploid lineages ($n$).
-    mu : float, default=3.15e-9
-        Per-base, per-generation mutation rate ($\mu$).
-    seq_len : float, default=2.5e6
-        Total sequence length in base pairs ($L$).
-    T_max : float, default=2e6
-        Maximum historical lookback horizon (in generations) for numerical integration.
-    n_pts : int, default=1000
-        Number of geometrically spaced integration points along the backwards time grid.
-    ploidy : int, default=1
-        Ploidy factor determining the coalescent rate denominator $\text{ploidy} \cdot N(t)$ 
-        (use 1 for standard haploid effective units, 2 for diploid $2N(t)$ coalescent units).
-
-    Attributes
-    ----------
-    target_sfs : ndarray of shape (n_haps - 1,)
-        Array of observed SFS counts.
-    n_haps : int
-        Sample size in haploid lineages.
-    mu_L : float
-        Total locus-wide mutation parameter $\mu \times L$.
-    T_max : float
-        Maximum backwards time limit.
-    ploidy : int
-        Organism ploidy factor.
-    t_grid : ndarray of shape (n_pts,)
-        Geometrically spaced time grid spanning $[0, T_{\max}]$.
-    W_matrix : ndarray of shape (n_haps - 1, n_haps - 1)
-        Precomputed Polanski-Kimmel transition matrix.
-    P_k_func : callable
-        Interpolant returning the probability vector $[\mathbb{P}(A_n = 2), \dots, \mathbb{P}(A_n = n)]$ 
-        at arbitrary cumulative coalescent times $\tau$.
-    """
-
-    def __init__(self, target_sfs, n_haps, mu=3.15e-9, seq_len=2.5e6, T_max=2e6, n_pts=1000, ploidy=1):
+    def __init__(self, target_sfs, n_haps, target_S_var=None, mu=3.15e-9, seq_len=2.5e6, 
+                 T_max=2e6, n_pts=1000, ploidy=1, num_coeffs=12, N_min=5000.0, N_max=1e7):
+        
         self.target_sfs = np.array(target_sfs)
+        # Optional empirical variance of the total number of sites across genomic windows
+        self.target_S_var = target_S_var 
+        
         self.n_haps = n_haps
         self.mu_L = mu * seq_len
         self.T_max = T_max
-        
         self.ploidy = ploidy
         
         self.t_grid = np.geomspace(1, T_max + 1, n_pts) - 1 
+        self.num_coeffs = num_coeffs
+        self.N_min = N_min
+        self.N_max = N_max
+        self.x_grid = 2.0 * (self.t_grid / self.T_max) - 1.0 
+
         self.W_matrix = generate_polanski_kimmel_matrix(n_haps)
-        self.P_k_func = self._precompute_kingman_states(n_haps)
 
-    def _precompute_kingman_states(self, n, tau_max=15.0, num_pts=1000):
+
+    def forward_moments(self, coeffs):
         r"""
-        Solve the pure-death CTMC ODEs for Kingman coalescent lineage distributions.
-
-        Solves the system $\frac{d P_k(\tau)}{d\tau} = -\binom{k}{2} P_k(\tau) + \binom{k+1}{2} P_{k+1}(\tau)$
-        from initial condition $P_n(0) = 1.0$ down to absorbing state $k = 2$.
-
-        Parameters
-        ----------
-        n : int
-            Total initial sample size in haploid lineages.
-        tau_max : float, default=15.0
-            Maximum cumulative coalescent time horizon for ODE solution.
-        num_pts : int, default=1000
-            Number of evaluation points across $\tau \in [0, \tau_{\max}]$.
-
-        Returns
-        -------
-        interpolant : scipy.interpolate.interp1d
-            Cubic spline interpolator returning an array of shape `(n - 1, ...)` 
-            corresponding to $[P_2(\tau), \dots, P_n(\tau)]$.
+        Computes the Expected SFS, Full Covariance Matrix, E[S], and Var(S).
         """
-        tau_grid = np.linspace(0, tau_max, num_pts)
-        def kingman_odes(tau, P):
-            dP = np.zeros_like(P)
-            for k in range(2, n + 1):
-                rate_out = k * (k - 1) / 2.0
-                dP[k] = -rate_out * P[k]
-                if k < n:
-                    rate_in = (k + 1) * k / 2.0
-                    dP[k] += rate_in * P[k+1]
-            return dP
+        N_t_array = self.build_Nt(coeffs)
+        N_func = interp1d(self.t_grid, N_t_array, bounds_error=False, 
+                          fill_value=(N_t_array[0], N_t_array[-1]))
         
-        P_init = np.zeros(n + 1)
-        P_init[n] = 1.0
-        sol = solve_ivp(kingman_odes, [0, tau_max], P_init, t_eval=tau_grid, method='BDF')
-        return interp1d(sol.t, sol.y[2:, :], kind='cubic', bounds_error=False, fill_value=0.0)
+        dim = self.n_haps + 1
+        y0 = np.zeros(dim * 2 + dim**2 * 2)
+        y0[self.n_haps] = 1.0 
+        
+        sol = solve_ivp(
+            self._real_time_moment_odes, 
+            [0, self.T_max], 
+            y0, 
+            args=(N_func,), 
+            method='BDF', 
+            rtol=1e-5, atol=1e-8
+        )
+        
+        final_state = sol.y[:, -1]
+        
+        idx = dim
+        E_T = final_state[idx : idx + dim]
+        idx += dim + dim**2
+        Z_inf = final_state[idx : idx + dim**2].reshape((dim, dim))
+        
+        # expected sfs
+        E_sfs = self.mu_L * (self.W_matrix @ E_T[2:])
+        E_L = E_sfs / self.mu_L
+        
+        # 2. Covariance Matrix of Inter-coalescent Times
+        Cov_T = np.zeros((self.n_haps - 1, self.n_haps - 1))
+        for i_idx, i in enumerate(range(2, dim)):
+            for j_idx, j in enumerate(range(2, dim)):
+                i_max, j_min = max(i, j), min(i, j)
+                if i_max == j_min:
+                    E_Ti_Tj = 2.0 * Z_inf[i_max, i_max]
+                else:
+                    E_Ti_Tj = Z_inf[i_max, j_min]
+                Cov_T[i_idx, j_idx] = E_Ti_Tj - (E_T[i] * E_T[j])
 
-    def build_Nt(self, coeffs):
+        # 3. Project to Covariance of SFS
+        Cov_L = self.W_matrix @ Cov_T @ self.W_matrix.T
+        mutational_cov = np.diag(self.mu_L * E_L)
+        Cov_sfs = mutational_cov + ((self.mu_L ** 2) * Cov_L)
+        
+        # 4. Global Scalars for Anchoring
+        E_S = np.sum(E_sfs)
+        Var_S = np.sum(Cov_sfs)
+        
+        return E_sfs, Cov_sfs, E_S, Var_S
+
+
+    def _composite_mvn_loss(self, coeffs, lambda_S=1.0, lambda_VarS=1.0, ridge_penalty=1e-6):
         r"""
-        Map optimization coefficients to an effective population size curve over `t_grid`.
-
-        Parameters
-        ----------
-        coeffs : array_like
-            Demographic parameters optimized by the fitting procedure.
-
-        Returns
-        -------
-        N_t : ndarray of shape (n_pts,)
-            Effective population trajectory evaluated along `self.t_grid`.
-
-        Raises
-        ------
-        NotImplementedError
-            Must be implemented in concrete subclasses.
+        Composite Negative Log-Likelihood combining MVN shape with global anchors.
         """
-        raise NotImplementedError
-
-    def forward_sfs(self, coeffs):
-        r"""
-        Compute the expected SFS and population trajectory for a given parameter set.
-
-        Computes cumulative coalescent intensity $\Lambda(t)$, extracts state probabilities 
-        $P_k(t)$, integrates across generations to determine expected epoch times 
-        $\mathbb{E}[T_k]$, and projects via $\mu L \cdot \mathbf{W} \mathbb{E}[\mathbf{T}]$.
-
-        Parameters
-        ----------
-        coeffs : array_like
-            Demographic parameters passed to `build_Nt`.
-
-        Returns
-        -------
-        expected_sfs : ndarray of shape (n_haps - 1,)
-            Expected count of segregating sites across derived frequency bins $1$ to $n-1$.
-        N_t : ndarray of shape (n_pts,)
-            Effective population size trajectory evaluated over `self.t_grid`.
-        """
-        N_t = self.build_Nt(coeffs)
+        pred_mean, pred_cov, pred_E_S, pred_Var_S = self.forward_moments(coeffs)
         
-        inv_2N = 1.0 / (self.ploidy * N_t)
-        Lambda_t = cumulative_trapezoid(inv_2N, self.t_grid, initial=0)
+        # ==========================================
+        # Penalty 1: MVN Structural Covariance Loss
+        # ==========================================
+        stable_cov = pred_cov + np.eye(self.n_haps - 1) * ridge_penalty
+        delta = self.target_sfs - pred_mean
         
-        P_k_t = self.P_k_func(Lambda_t) 
-        E_T_k = simpson(y=P_k_t, x=self.t_grid, axis=1)
-        
-        expected_sfs = self.mu_L * (self.W_matrix @ E_T_k)
-        return expected_sfs, N_t
+        try:
+            c, lower = scipy.linalg.cho_factor(stable_cov)
+            mahalanobis = np.dot(delta, scipy.linalg.cho_solve((c, lower), delta))
+            logdet = 2.0 * np.sum(np.log(np.diag(c)))
+            mvn_loss = 0.5 * (logdet + mahalanobis)
+        except scipy.linalg.LinAlgError:
+            return 1e9
 
-    def _poisson_loss(self, coeffs):
-        r"""
-        Negative Poisson composite log-likelihood loss (omitting data log-factorials).
+        # ==========================================
+        # Penalty 2: Expected Total Sites E[S]
+        # ==========================================
+        target_S = np.sum(self.target_sfs)
+        # Weighted by target_S to act like a Poisson log-likelihood variance term
+        S_loss = lambda_S * ((target_S - pred_E_S)**2) / (2.0 * target_S)
 
-        $$\mathcal{L}(\boldsymbol{\theta}) = \sum_{i=1}^{n-1} \left( \lambda_i(\boldsymbol{\theta}) - S_i \ln \lambda_i(\boldsymbol{\theta}) \right)$$
+        # ==========================================
+        # Penalty 3: Variance of Total Sites Var(S)
+        # ==========================================
+        Var_S_loss = 0.0
+        if self.target_S_var is not None:
+            # Weighted by the target variance to normalize scale
+            Var_S_loss = lambda_VarS * ((self.target_S_var - pred_Var_S)**2) / (2.0 * self.target_S_var)
 
-        Parameters
-        ----------
-        coeffs : array_like
-            Demographic parameters evaluated by the optimizer.
-
-        Returns
-        -------
-        loss : float
-            Total negative Poisson log-likelihood.
-        """
-        pred_sfs, _ = self.forward_sfs(coeffs)
-        pred_sfs = np.clip(pred_sfs, 1e-9, None)
-        return np.sum(pred_sfs - self.target_sfs * np.log(pred_sfs))
-
-    def fit(self, init_coeffs, bounds=None):
-        r"""
-        Fit demographic parameters to the empirical SFS using L-BFGS-B optimization.
-
-        Parameters
-        ----------
-        init_coeffs : array_like
-            Initial parameter guess for the numerical optimizer.
-        bounds : sequence of (float, float) or scipy.optimize.Bounds, optional
-            Lower and upper optimization bounds for each parameter.
-
-        Returns
-        -------
-        optimal_coeffs : ndarray
-            Optimal parameter vector $\hat{\boldsymbol{\theta}}$ found by L-BFGS-B.
-        optimal_Nt : ndarray of shape (n_pts,)
-            Fitted demographic curve $N(t)$ evaluated across `self.t_grid`.
-        optimal_sfs : ndarray of shape (n_haps - 1,)
-            Model-predicted expected SFS under the fitted demographic history.
-        """
-        print("Starting generalized gradient descent...")
-        res = minimize(self._poisson_loss, init_coeffs, bounds=bounds, 
-                       method='L-BFGS-B', options={'disp': True})
-        
-        optimal_sfs, optimal_Nt = self.forward_sfs(res.x)
-        return res.x, optimal_Nt, optimal_sfs
-
+        return mvn_loss + S_loss + Var_S_loss
+    
 
 class ChebyshevSFSHistory(SFSTargetedHistory):
     r"""
