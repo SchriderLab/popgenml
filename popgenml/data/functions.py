@@ -859,7 +859,7 @@ def chamfer_distance_1d(set_a, set_b):
         dist_b_to_a += min_dist
 
     # The Chamfer distance is the sum of these two unidirectional distances
-    chamfer_dist = dist_a_to_b + dist_b_to_a
+    chamfer_dist = (dist_a_to_b / len(set_a) + dist_b_to_a / len(set_b)) / 2.
     return chamfer_dist
 
 
