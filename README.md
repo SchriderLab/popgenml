@@ -2,16 +2,17 @@
 
 A repo with tools to simulate population genetic scenarios, apply popular inference routines such as Relate and SINGER, and to train machine learning inference models all from within Python. 
 
+
 Includes support for popular popgen simulators:
 
-* msprime (https://github.com/tskit-dev/msprime)
-* SLiM (https://github.com/MesserLab/SLiM)
-* discoal ()
+* [msprime](https://github.com/tskit-dev/msprime)
+* [SLiM](https://github.com/MesserLab/SLiM)
+* [discoal](https://github.com/kr-colab/discoal)
 
 Python wrappings for popular inference routines:
 
-* Relate - tree sequence inference (https://myersgroup.github.io/relate/index.html)
-* SINGER - tree sequence inference (https://github.com/popgenmethods/SINGER)
+* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference (<https://myersgroup.github.io/relate/index.html>)
+* [SINGER](https://github.com/popgenmethods/SINGER) - tree sequence inference
 
 Formatting routines:
 

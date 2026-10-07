@@ -4,14 +4,14 @@ A repo with tools to simulate population genetic scenarios, apply popular infere
 
 Includes support for popular popgen simulators:
 
-* msprime (https://github.com/tskit-dev/msprime)
-* SLiM (https://github.com/MesserLab/SLiM)
-* discoal ()
+* [msprime](https://github.com/tskit-dev/msprime)
+* [SLiM](https://github.com/MesserLab/SLiM)
+* [discoal](https://github.com/kr-colab/discoal)
 
 Python wrappings for popular inference routines:
 
-* Relate - tree sequence inference (https://myersgroup.github.io/relate/index.html)
-* SINGER - tree sequence inference (https://github.com/popgenmethods/SINGER)
+* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference (<https://myersgroup.github.io/relate/index.html>)
+* [SINGER](https://github.com/popgenmethods/SINGER) - tree sequence inference
 
 Formatting routines:
 
@@ -27,7 +27,7 @@ Inference models:
 * UNet from (https://pmc.ncbi.nlm.nih.gov/articles/PMC9979274/)
 * GCN models from (https://academic.oup.com/mbe/article/41/11/msae223/7845315)
 
-See the tutorials folder for examples as Jupyter notebooks.  The documentation and API reference can be found at https://popgenml.readthedocs.io/en/latest/
+See the [tutorials](https://github.com/SchriderLab/popgenml/tree/main/tutorials/) folder for examples as Jupyter notebooks.  The documentation and API reference can be found [here](https://popgenml.readthedocs.io/en/latest/)
 
 ## Installation
 
