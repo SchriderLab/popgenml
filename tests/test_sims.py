@@ -51,7 +51,7 @@ ploidy = 2
 
 [samples]
 # A diploid population with a variable size history defined by a spline
-pop1 = {'Nt': 'ChebyshevHistory(target_snps=np.random.uniform(8000, 12000), n_haps=100, volatility = 2.0)', 'n': 4}
+pop1 = {'Nt': 'ChebyshevHistory(target_snps=np.random.uniform(8000, 12000), n_haps=4, volatility = 2.0)', 'n': 4}
 """
 
     print('Running [discoal <=> msprime (cheby)]...')
