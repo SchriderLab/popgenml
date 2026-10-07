@@ -1,39 +1,99 @@
-# Overview of popgenml with examples
+# popgenml
 
-Simulation of population genetic scenarios involving varying population sizes, migration, selection and other dynamics has become increasingly popular with 
-the advent of machine learning.  It is often the first step in developing tools meant to infer quantities such as recombination or mutation rate or whether or not two populations
-have had recent admixture.  popgenml hopes to streamline experiments around the development of such tools from within Python.  It has three overarching intended functions:
+A repo with tools to simulate population genetic scenarios, apply popular inference routines such as Relate and SINGER, and to train machine learning inference models all from within Python. 
 
-1. Simulation
-    - Defining a demography or prior over demographies
-    - Reading and writing of saved simulations
-2. Formatting inputs and outputs
-    - Genotype matrices
-    - Popular pop-gen statistics
-    - Inferred genealogical distance matrices
-    - Embeddings for marginal trees
-    - Graph (node / edge) representation for marginal trees
-    - Conversion between representations
-3. Training
-    - Pre-built torch models
-    - Training tools and visualization
+Includes support for popular popgen simulators:
 
-## Simulation
+* msprime (https://github.com/tskit-dev/msprime)
+* SLiM (https://github.com/MesserLab/SLiM)
+* discoal ()
 
-popgenml comes with two classes of population genetic simulator, 
+Python wrappings for popular inference routines:
 
-## Formatting data from simulation replicates
+* Relate - tree sequence inference (https://myersgroup.github.io/relate/index.html)
+* SINGER - tree sequence inference (https://github.com/popgenmethods/SINGER)
 
-Like in many applications of machine learning, your choice of how to represent a replicate in your training set and what information to discard etc. can drastically affect the performance obtained.  For instance, if we were working with 3D objects as input to some model we might try to represent them as point clouds (a list of coordinates), as a binary 3d grid (voxels), or as a mesh (points with graph connectivity):
+Formatting routines:
 
-![image](https://miro.medium.com/v2/resize:fit:1158/1*n4uKWdVBwQGlB77Y3hsTPQ.png)
+* Computation of windowed population genetic statistics (such as LD or the site frequency spectrum)
+* Seriation
+* Linear sum assignment for subpopulations
+* FW encoding of inferred or ground truth genealogical trees (https://www.pnas.org/doi/10.1073/pnas.1922851117)
+* Conversions between TSKit trees and distance matrices and graphs (node and edge sets)
 
-In population genetic simulations we often save alignments for a sample of individuals over some region of their genome.  We can make various choices, however, about how we represent the alignment and what if any post-processing steps such as the sorting of sampled individuals or tree sequence inference.  For instance we could choose for input to our model the alignment itself, inferred tree sequences as a sequence of graphs, the site frequence spectrum (histogram of allele counts), or use a tree matrix embedding (from https://www.pnas.org/doi/10.1073/pnas.1922851117):
+Inference models:
 
-![image](https://github.com/SchriderLab/popgenml/blob/main/docs/markdown/images/pogenml_intro_fig1.png)
+* ResNet for inference on genotype matrices
+* UNet from (https://pmc.ncbi.nlm.nih.gov/articles/PMC9979274/)
+* GCN models from (https://academic.oup.com/mbe/article/41/11/msae223/7845315)
 
-Each choice implies a set of architectures or models that can take it as input, and different choices may be better suited for different inference problems.  For instance, if we were to use inferred trees as a list of graphs (with node features and edges) as our input, then we can use graph convolution (https://en.wikipedia.org/wiki/Graph_neural_network) as part of our model, whereas an alignment matrix is suited for traditional 1d or 2d convolution.  
+See the tutorials folder for examples as Jupyter notebooks.  The documentation and API reference can be found at https://popgenml.readthedocs.io/en/latest/
 
-### Sorting of alignment matrices
+## Installation
 
-We include two functions meant to "sort" individuals such that genetically similar individuals are near each other in the ordering.  
+### 1. Prerequisites: External Simulators and Tools
+
+To run simulations and inference routines utilizing SLiM, Relate, and SINGER, you must have their C++ binaries installed. We provide an automated installation script that compiles and installs these tools to your local user environment (`~/.local/bin`) without requiring root access.
+
+First, ensure you have standard C++ build tools installed on your system. For Debian/Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install build-essential cmake git zlib1g-dev
+```
+
+Then, run the provided companion installation script from the root of this repository:
+
+```bash
+chmod +x install_popgen_tools.sh
+./install_popgen_tools.sh
+```
+
+*Note: Ensure `~/.local/bin` is in your system's `$PATH`. The script will warn you if you need to add it to your `~/.bashrc` or `~/.zshrc`.*
+
+### 2. Torch and torch-geometric (conda)
+
+First, create a fresh environment with Python 3.10:
+
+```bash
+conda create -n "popgenml" python=3.10
+conda activate popgenml
+```
+
+**Install PyTorch with CUDA support**
+
+To utilize GPU acceleration, ensure your PyTorch installation matches your system's CUDA version. You can check your available CUDA driver version by running `nvidia-smi`.
+
+For the latest PyTorch distributions with CUDA 12.x (e.g., CUDA 12.4), use the official Conda channels:
+
+```bash
+conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
+```
+*(If you do not have a GPU, you can install the CPU-only version by omitting the `pytorch-cuda` flag and using `cpuonly` instead).*
+
+**Install PyTorch Geometric (PyG)**
+
+You can install the core PyTorch Geometric library directly via conda:
+
+```bash
+conda install pyg -c pyg
+```
+
+*Optional but highly recommended for performance:* PyG relies on a few C++/CUDA extension packages (like `torch_scatter` and `torch_sparse`) for efficient graph operations. To avoid compiling these from source, PyG hosts pre-compiled pip wheels that must strictly match your PyTorch (`${TORCH}`) and CUDA (`${CUDA}`) versions.
+
+For example, if you installed PyTorch 2.5 and CUDA 12.4, install the extensions via pip like this:
+
+```bash
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
+```
+
+### 3. Install popgenml
+
+Finally, you can install the `popgenml` python package:
+
+```bash
+git clone https://github.com/SchriderLab/popgenml/
+cd popgenml
+pip install -r requirements.txt
+python setup.py install
+```
