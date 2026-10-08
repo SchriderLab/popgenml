@@ -9,10 +9,10 @@ Includes support for popular popgen simulators:
 * [SLiM](https://github.com/MesserLab/SLiM)
 * [discoal](https://github.com/kr-colab/discoal)
 
-Python wrappings for popular inference routines:
+Python wrappings for popular tree sequence inference routines:
 
-* [Relate](https://myersgroup.github.io/relate/index.html) - tree sequence inference
-* [SINGER](https://github.com/popgenmethods/SINGER) - tree sequence inference
+* [Relate](https://myersgroup.github.io/relate/index.html) 
+* [SINGER](https://github.com/popgenmethods/SINGER) 
 
 Formatting routines:
 
