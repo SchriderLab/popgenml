@@ -7,3 +7,5 @@ matplotlib
 cyvcf2
 ortools
 pyslim
+zstandard
+pandas
