@@ -3,6 +3,14 @@
 API
 ==============
 
+Data classes
+---------------
+
+.. autoclass:: popgenml.data.PGTreeSequence
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Simulators
 ---------------
 
@@ -141,3 +149,11 @@ Relate
    :toctree: generated/
 
    popgenml.data.relate
+   
+Singer
+-------------------------
+
+.. autosummary::
+   :toctree: generated/
+
+   popgenml.data.singer
