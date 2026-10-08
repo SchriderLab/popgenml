@@ -46,11 +46,9 @@ sudo apt-get install build-essential cmake git zlib1g-dev
 Then, run the provided companion installation script from the root of this repository:
 
 ```bash
-chmod +x install_popgen_tools.sh
-./install_popgen_tools.sh
+chmod +x install_deps.sh
+./install_deps.sh
 ```
-
-*Note: Ensure `~/.local/bin` is in your system's `$PATH`. The script will warn you if you need to add it to your `~/.bashrc` or `~/.zshrc`.*
 
 ### 2. Torch and torch-geometric (conda)
 
