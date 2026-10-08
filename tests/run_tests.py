@@ -202,7 +202,7 @@ pop1 = {'N0': 10000, 'n': 2}
     err = ts_est.breakpoint_chamfer_distance(ts)
     print('chamfer err = {}'.format(err))
     
-    print('[ts comparisons: relate] SUCCESS!')
+    print('[ts comparisons: singer] SUCCESS!')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run statistical equivalency tests for popgenml simulators.")
