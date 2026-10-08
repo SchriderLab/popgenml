@@ -221,7 +221,7 @@ def create_prior_from_config(config_source: str) -> Dict[str, Dict[str, Any]]:
         
 
 class BaseSimulator:
-    """
+    r"""
     A base simulator class that loads parameters and validated sample population priors
     directly from a configuration file or a raw INI-formatted string.
 
@@ -230,7 +230,7 @@ class BaseSimulator:
     mutation/recombination rates.
     """
     def __init__(self, config_source: str, seeds: dict | None = None):
-        """
+        r"""
         Initializes the BaseSimulator from a configuration file or INI string.
 
         Args:
@@ -311,7 +311,7 @@ class BaseSimulator:
         self.params = {}
 
     def set_seeds(self, seeds: dict | None):
-        """
+        r"""
         Sets the random seeds for the simulator.
 
         Args:
@@ -589,7 +589,7 @@ class MSPrimeSimulator(BaseSimulator):
 import pyslim
 
 class SLiMSimulator(BaseSimulator):
-    """
+    r"""
     A forward-time simulator utilizing SLiM to model explicit background selection.
     Generates tree sequences that are compatible with the msprime mutation pipeline.
     """
