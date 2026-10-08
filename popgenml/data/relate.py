@@ -259,6 +259,189 @@ def read_anc(anc_file, pop_sizes = (40,0)):
     anc_file.close()
 
     return X, edge_indices, snps, branch_lengths
+
+import tskit
+
+def read_anc_to_tskit_trees(anc_file):
+    tree_blocks = []
+    
+    with open(anc_file, 'r') as f:
+        # Skip the first 3 lines (Relate .anc header blocks)
+        for _ in range(3):
+            f.readline()
+            
+        for line in f:
+            if '(' not in line:
+                continue
+                
+            # Clean and tokenize the line
+            line_clean = line.replace(':', ' ').replace('(', '').replace(')', '').strip()
+            if not line_clean:
+                continue
+                
+            parts = line_clean.split()
+            start_snp = int(parts[0])
+            
+            edges = []
+            branch_lengths = {}
+            
+            for j in range(1, len(parts), 5):
+                try:
+                    child = (j - 1) // 5
+                    parent = int(parts[j])
+                    length = float(parts[j + 1])
+                    
+                    if parent >= 0:
+                        edges.append((parent, child))
+                        
+                    branch_lengths[child] = length
+                except IndexError:
+                    break
+                    
+            tree_blocks.append({
+                'start_snp': start_snp,
+                'edges': edges,
+                'lengths': branch_lengths
+            })
+
+    if not tree_blocks:
+        return []
+
+    # 1. Define bounds and scaling factor
+    max_start = float(tree_blocks[-1]['start_snp'])
+    seq_len = max_start + 1.0  
+    
+    # 2. Identify samples (tips)
+    children = set()
+    parents = set()
+    for block in tree_blocks:
+        for p, c in block['edges']:
+            children.add(c)
+            parents.add(p)
+            
+    samples = children - parents
+    
+    if not children and not parents:
+        max_node_id = 0
+    else:
+        max_node_id = max(max(children), max(parents))
+
+    # 3. Resolve consistent node times (tskit enforces: parent_time > child_time)
+    node_times = {n: 0.0 for n in samples}
+    for _ in range(max_node_id + 1):  
+        changed = False
+        for block in tree_blocks:
+            for p, c in block['edges']:
+                if c in node_times:
+                    t = node_times[c] + max(block['lengths'][c], 1e-6)
+                    if p not in node_times or node_times[p] < t:
+                        node_times[p] = t
+                        changed = True
+        if not changed:
+            break
+
+    # 4. Build the tskit TableCollection
+    tables = tskit.TableCollection(sequence_length=1.0)
+
+    for i in range(max_node_id + 1):
+        if i in samples:
+            tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=node_times.get(i, 0.0))
+        else:
+            tables.nodes.add_row(flags=0, time=node_times.get(i, 0.0))
+
+    # 5. Populate edges
+    for i, block in enumerate(tree_blocks):
+        curr_start = block['start_snp']
+        left = curr_start / seq_len
+        
+        if i < len(tree_blocks) - 1:
+            next_start = tree_blocks[i + 1]['start_snp']
+            right = next_start / seq_len
+        else:
+            right = 1.0
+            
+        for p, c in block['edges']:
+            tables.edges.add_row(left=left, right=right, parent=p, child=c)
+
+    # Sort and finalize tree sequence
+    tables.sort()
+    ts = tables.tree_sequence()
+
+    # 6. Yield Tree objects, their scaled spans, and dynamic SNP index lists
+    # 6. Yield Tree objects, their scaled spans, and dynamic SNP index lists
+    result = []
+    for tree in ts.trees():
+        local_tables = tskit.TableCollection(sequence_length=1.0)
+        
+        # Find strictly the nodes connected to the samples in THIS interval
+        samples = list(tree.samples())
+        active_nodes = set(samples)
+        for u in samples:
+            curr = u
+            while tree.parent(curr) != tskit.NULL:
+                curr = tree.parent(curr)
+                active_nodes.add(curr)
+                
+        internal_nodes = [u for u in active_nodes if u not in samples]
+        internal_nodes.sort(key=lambda u: tree.time(u))
+        
+        node_map = {}
+        
+        # 1. Map samples strictly to 0...n-1 so they match the simulated tree
+        for u in samples:
+            node_map[u] = local_tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=tree.time(u))
+            
+        # 2. Add connected internal nodes
+        for u in internal_nodes:
+            node_map[u] = local_tables.nodes.add_row(flags=0, time=tree.time(u))
+            
+        # 3. Add edges
+        for u in active_nodes:
+            parent = tree.parent(u)
+            if parent != tskit.NULL and parent in active_nodes:
+                local_tables.edges.add_row(
+                    left=0.0, right=1.0,
+                    parent=node_map[parent], child=node_map[u]
+                )
+                
+        local_tables.sort()
+        clean_ts = local_tables.tree_sequence()
+        
+        # Enable sample lists here
+        clean_tree = clean_ts.first(sample_lists=True)
+        
+        # 4. Handle Relate uncoalesced lineages
+        if clean_tree.num_roots > 1:
+            dummy_tables = clean_ts.dump_tables()
+            roots = [u for u in clean_tree.nodes() if clean_tree.parent(u) == tskit.NULL]
+            
+            # Place dummy root older than all existing roots
+            max_time = max([clean_tree.time(r) for r in roots])
+            dummy_root = dummy_tables.nodes.add_row(flags=0, time=max_time + 1.0)
+            
+            for r in roots:
+                dummy_tables.edges.add_row(left=0.0, right=1.0, parent=dummy_root, child=r)
+                
+            dummy_tables.sort()
+            
+            # Enable sample lists here as well
+            clean_tree = dummy_tables.tree_sequence().first(sample_lists=True)
+
+        # Finalize spans and SNPs
+        span_tuple = (tree.interval.left, tree.interval.right)
+        start_idx = int(round(tree.interval.left * seq_len))
+        end_idx = int(round(tree.interval.right * seq_len))
+        snps = list(range(start_idx, end_idx))
+        
+        result.append((clean_tree, span_tuple, snps))
+                
+    return [u[0] for u in result], [u[1] for u in result], [u[2] for u in result]
+
+# Example usage:
+# tskit_trees = read_anc_to_tskit_trees("my_data.anc")
+# for tree, (start, end) in tskit_trees:
+#     print(f"Tree spans from {start:.3f} to {end:.3f}")
+#     print(f"Total Roots: {tree.num_roots}, Total Edges: {tree.num_edges}")
     
 def harmonic_number(n):
     return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
@@ -281,12 +464,12 @@ def get_haps_positions(filename):
     return positions
 
 def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = False,
-           return_graph = False, mode = 'All', odir = None):
-    """
+           return_graph = False, odir = None):
+    r"""
     Run RELATE (a genealogy-based inference method) on simulated or empirical binary haplotype data.
 
     This function writes the input data in `ms` format, constructs a genetic map, executes the RELATE
-    command-line pipeline, and parses the output to return coalescent statistics.
+    command-line pipeline, and parses the output to return a tree sequence object.
 
     Parameters:
         X (np.ndarray): Binary haplotype array of shape (n_individuals, n_sites).
@@ -295,19 +478,17 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
         mu (float): Mutation rate per base pair.
         r (float): Recombination rate per base pair.
         L (int): Total sequence length in base pairs.
-        N (int, optional): Effective population size.  If not provided, estimated using Wattersons theta calculated from the number of segregating sites and mu
+        N (int, optional): Effective population size. If not provided, estimated using Watterson's theta calculated from the number of segregating sites and mu.
         diploid (bool, optional): Whether the input samples are diploid (default is False).
         verbose (bool, optional): Whether to print RELATE's output to the terminal (default is False).
         return_graph (bool, optional): Placeholder (not currently used) for returning inferred ARG.
+        odir (str, optional): Path to an output directory to save RELATE files. If None, a temporary directory is used and cleaned up automatically.
 
     Returns:
-        X (np.ndarray): node features for the inferred trees
-        edge_indices (np.ndarray): edge indices specifying the tree topology for each tree
-        snps (np.ndarray): The polymorphism data corresponding each tree (their span)
-        branch_lengths (np.ndarray): list of branch lengths
+        PGTreeSequence: An object encapsulating the inferred tree sequence, containing the parsed tskit trees and their corresponding genomic intervals (spans).
 
     Notes:
-        - This function creates and cleans up a temporary directory to run RELATE.
+        - If `odir` is not specified, this function creates and cleans up a temporary directory to run RELATE.
         - Assumes RELATE and helper binaries (`relate_cmd`, etc.) are properly configured and in scope.
         - Input data is written in ms-format; RELATE’s `.haps` and `.sample` files are auto-generated.
         - Genomic map is generated with a constant recombination rate.
@@ -315,7 +496,6 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     Requires:
         - External RELATE binary and pre-configured command templates: `rcmd`, `relate_cmd`.
         - Supporting functions: `write_to_ms`, `read_anc`.
-
     """
     if N is None:
         N = (X.shape[1] / (4 * mu * L)) / harmonic_number(X.shape[0])
@@ -352,8 +532,6 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     haps = list(map(os.path.abspath, sorted(glob.glob(os.path.join(odir, '*.haps')))))
     samples = list(map(os.path.abspath, [u.replace('.haps', '.sample') for u in haps if os.path.exists(u.replace('.haps', '.sample'))]))
     
-    
-    
     # we need to rewrite the haps files (for haploid organisms)
     if diploid:
         for sample in samples:
@@ -382,7 +560,7 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     
     cmd_ = relate_cmd.format(mu, 2 * N, haps[0], 
                              samples[0], os.path.abspath(map_file), 
-                             ofile, odir, mode)
+                             ofile, odir, 'All')
     if not verbose:
         cmd_ += ' >/dev/null 2>&1'
         
@@ -390,17 +568,12 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
         print(cmd_)
     
     os.system(cmd_)
+
+    anc_file = os.path.join(odir, '{}.anc'.format(ofile))
     
-    if mode == "All":
-        anc_file = os.path.join(odir, '{}.anc'.format(ofile))
-        
-        X, edge_indices, snps, branch_lengths = read_anc(anc_file, pop_sizes = (n_samples, 0))
-        
-        pos_relate = get_haps_positions(os.path.join(temp_dir.name, 'relate/sim.haps'))
-        
-        if odir is None:
-            temp_dir.cleanup()
+    trees, intervals, snps = read_anc_to_tskit_trees(anc_file)
     
-        return X, edge_indices, snps, branch_lengths, pos_relate
-    else:
-        return cmd_
+    if odir is None:
+        temp_dir.cleanup()
+
+    return PGTreeSequence(trees, intervals)

@@ -3,95 +3,95 @@ import itertools
 import numpy as np
 import tskit
 from dataclasses import dataclass
-from typing import List, Iterable
+from typing import List, Iterable, Tuple
 
 @dataclass
 class PGTreeSequence:
     """
-    A representation of a sequence of marginal trees mapped to segregating sites.
+    A representation of a sequence of marginal trees mapped to genomic intervals.
 
     This class wraps a list of `tskit.Tree` objects and aligns them with a 
-    corresponding list of segregating site counts. It provides methods to 
-    unroll these compressed marginal trees back into a site-by-site format, 
-    and allows for tree topology and breakpoint comparisons against other 
-    `PGTreeSequence` instances.
+    corresponding list of scaled genomic intervals (0.0 to 1.0). It provides methods 
+    to compare tree topologies, breakpoints, and coalescent times against other 
+    `PGTreeSequence` instances by computing interval-weighted averages.
 
     Attributes:
         trees (List[tskit.Tree]): A list of sequential marginal trees.
-        segregating_sites (List[int]): The number of segregating sites associated 
-            with each tree. The length of this list must exactly match the length 
-            of `trees`.
+        intervals (List[Tuple[float, float]]): The [left, right] bounding positions 
+            on the chromosome for each tree, scaled from 0.0 to 1.0. The length 
+            of this list must exactly match the length of `trees`.
     """
     trees: List[tskit.Tree]
-    segregating_sites: List[int]
+    intervals: List[Tuple[float, float]]
     
     def __post_init__(self):
-        if len(self.trees) != len(self.segregating_sites):
-            raise ValueError("Length of 'trees' and 'segregating_sites' must be identical.")
+        if len(self.trees) != len(self.intervals):
+            raise ValueError("Length of 'trees' and 'intervals' must be identical.")
 
-    def iter_site_trees(self) -> Iterable[tskit.Tree]:
+    def iter_overlapping_intervals(self, other: 'PGTreeSequence') -> Iterable[Tuple[tskit.Tree, tskit.Tree, float]]:
         """
-        Unrolls the compressed marginal trees into a site-by-site generator.
+        Yields overlapping tree pairs and the length of their overlap.
+
+        Since two tree sequences may have different recombination breakpoints, this 
+        generator computes the intersections of their intervals, returning the trees 
+        that share genomic space and the weight (size) of that shared interval.
 
         Yields:
-            tskit.Tree: The corresponding marginal tree for every individual 
-            segregating site.
+            Tuple[tskit.Tree, tskit.Tree, float]: Tree from self, Tree from other, 
+            and the scaled length of their overlapping interval.
         """
-        for tree, num_sites in zip(self.trees, self.segregating_sites):
-            for _ in range(num_sites):
-                yield tree
+        i, j = 0, 0
+        while i < len(self.trees) and j < len(other.trees):
+            t1, int1 = self.trees[i], self.intervals[i]
+            t2, int2 = other.trees[j], other.intervals[j]
+            
+            # Find the overlapping continuous region
+            left = max(int1[0], int2[0])
+            right = min(int1[1], int2[1])
+            
+            if left < right:
+                yield t1, t2, float(right - left)
+            
+            # Advance the pointer of the interval that ends first
+            if int1[1] < int2[1]:
+                i += 1
+            else:
+                j += 1
 
-    def _validate_comparison(self, other: 'PGTreeSequence'):
-        """Ensures that two tree sequences are comparable."""
-        if sum(self.segregating_sites) != sum(other.segregating_sites):
-            raise ValueError("Both PGTreeSequence objects must have the same total number of segregating sites.")
-
-    def site_by_site_kc_distance(self, other: 'PGTreeSequence') -> List[float]:
+    def average_kc_distance(self, other: 'PGTreeSequence') -> float:
         """
-        Computes the site-by-site Kendall-Colijn (KC) distance.
-
-        Unrolls both tree sequences to a site-by-site level and computes the 
-        KC distance between corresponding trees.
+        Computes the interval-weighted average Kendall-Colijn (KC) distance.
 
         Args:
             other (PGTreeSequence): The other tree sequence to compare against.
 
         Returns:
-            List[float]: A list of KC distances for each segregating site.
+            float: The weighted average KC distance across the entire [0, 1] scaled chromosome.
         """
-        self._validate_comparison(other)
-        return [
-            t1.kc_distance(t2) 
-            for t1, t2 in zip(self.iter_site_trees(), other.iter_site_trees())
-        ]
+        return sum(
+            t1.kc_distance(t2) * weight 
+            for t1, t2, weight in self.iter_overlapping_intervals(other)
+        )
 
-    def site_by_site_rf_distance(self, other: 'PGTreeSequence') -> List[float]:
+    def average_rf_distance(self, other: 'PGTreeSequence') -> float:
         """
-        Computes the site-by-site unweighted Robinson-Foulds (RF) distance.
-
-        Unrolls both tree sequences to a site-by-site level and computes the 
-        RF distance between corresponding trees using tskit's native method.
+        Computes the interval-weighted average unweighted Robinson-Foulds (RF) distance.
 
         Args:
             other (PGTreeSequence): The other tree sequence to compare against.
 
         Returns:
-            List[float]: A list of unweighted RF distances for each segregating site.
+            float: The weighted average RF distance across the [0, 1] scaled chromosome.
         """
-        self._validate_comparison(other)
-        return [
-            t1.rf_distance(t2) 
-            for t1, t2 in zip(self.iter_site_trees(), other.iter_site_trees())
-        ]
+        return sum(
+            t1.rf_distance(t2) * weight 
+            for t1, t2, weight in self.iter_overlapping_intervals(other)
+        )
 
-    def site_by_site_rms_log_coal_time(self, other: 'PGTreeSequence', epsilon: float = 1e-8) -> List[float]:
+    def average_rms_log_coal_time(self, other: 'PGTreeSequence', epsilon: float = 1e-8) -> float:
         """
-        Computes the site-by-site root-mean-square (RMS) difference of log 
+        Computes the interval-weighted root-mean-square (RMS) difference of log 
         coalescent times.
-
-        For every corresponding site, calculates the RMS of the log differences 
-        in the Time to Most Recent Common Ancestor (TMRCA) across all pairs of 
-        shared samples between the two trees.
 
         Args:
             other (PGTreeSequence): The other tree sequence to compare against.
@@ -99,22 +99,19 @@ class PGTreeSequence:
                 errors for zero-length branches. Defaults to 1e-8.
 
         Returns:
-            List[float]: A list of RMS log TMRCA differences for each segregating site.
+            float: The weighted average RMS log TMRCA difference across the sequence.
         """
-        self._validate_comparison(other)
-        return [
-            self._calculate_rms_log_tmrca(t1, t2, epsilon) 
-            for t1, t2 in zip(self.iter_site_trees(), other.iter_site_trees())
-        ]
+        return sum(
+            self._calculate_rms_log_tmrca(t1, t2, epsilon) * weight 
+            for t1, t2, weight in self.iter_overlapping_intervals(other)
+        )
 
     def breakpoint_chamfer_distance(self, other: 'PGTreeSequence') -> float:
         """
         Computes the symmetric mean Chamfer distance between sequence breakpoints.
 
-        Breakpoints are defined as the cumulative sum of segregating sites 
-        (excluding the final sequence boundary). This metric calculates the 
-        average distance from each breakpoint in the first sequence to the 
-        nearest breakpoint in the second, plus the reverse.
+        Breakpoints are defined as the right-side boundary of each interval 
+        (excluding the final sequence boundary at 1.0).
 
         Args:
             other (PGTreeSequence): The other tree sequence to compare against.
@@ -123,11 +120,9 @@ class PGTreeSequence:
             float: The computed Chamfer distance. Returns 0.0 if neither 
             sequence has breakpoints, or NaN if only one sequence lacks breakpoints.
         """
-        self._validate_comparison(other)
-        
-        # Breakpoints are the cumulative sum of sites (excluding the final sequence boundary)
-        bp1 = np.cumsum(self.segregating_sites)[:-1]
-        bp2 = np.cumsum(other.segregating_sites)[:-1]
+        # Breakpoints are the right boundaries of all intervals except the very last one
+        bp1 = np.array([interval[1] for interval in self.intervals[:-1]])
+        bp2 = np.array([interval[1] for interval in other.intervals[:-1]])
         
         # Handle cases where one or both tree sequences contain no breakpoints (only 1 tree)
         if len(bp1) == 0 and len(bp2) == 0:
@@ -179,37 +174,33 @@ class PGTreeSequence:
         Computes the histogram of coalescent times across the tree sequence.
 
         This extracts the times of all internal nodes (coalescent events) 
-        across all marginal trees. The contribution of each tree's coalescent 
-        times is weighted by its number of segregating sites.
+        across all marginal trees, weighted by the scaled genomic interval 
+        span (0-1) of that tree.
 
         Args:
             bins (int or sequence of scalars, optional): The number of bins or 
                 an array of bin edges. Defaults to 50.
             time_range (tuple, optional): The lower and upper range of the bins 
-                (min_time, max_time). If not provided, it defaults to the 
-                (min, max) of the extracted times.
+                (min_time, max_time).
 
         Returns:
             tuple: A tuple (counts, bin_edges) identical to numpy.histogram.
-                - counts (np.ndarray): The weighted frequency of coalescent events.
-                - bin_edges (np.ndarray): The edges of the bins.
         """
         times = []
         weights = []
         
-        for tree, num_sites in zip(self.trees, self.segregating_sites):
-            # Skip trees that don't cover any segregating sites
-            if num_sites == 0:
+        for tree, interval in zip(self.trees, self.intervals):
+            span = interval[1] - interval[0]
+            if span <= 0:
                 continue
                 
             # Extract times for all internal nodes (coalescent events)
             for u in tree.nodes():
                 if tree.is_internal(u):
                     times.append(tree.time(u))
-                    weights.append(num_sites)
+                    weights.append(span)
                     
         if not times:
-            # Return empty histogram structure if no internal nodes exist
             return np.histogram([], bins=bins, range=time_range)
             
         return np.histogram(times, bins=bins, range=time_range, weights=weights)
@@ -219,53 +210,88 @@ class PGTreeSequence:
         """
         Creates a PGTreeSequence directly from a standard tskit.TreeSequence.
 
-        Extracts the marginal trees and the number of segregating sites 
-        (tskit sites) associated with each tree's genomic interval.
+        Extracts the marginal trees and scales their absolute genomic intervals 
+        into relative 0.0 to 1.0 bounding proportions.
 
         Args:
             ts (tskit.TreeSequence): The input tskit tree sequence.
 
         Returns:
             PGTreeSequence: A new instance populated with the marginal trees 
-            and their corresponding segregating site counts.
+            and their scaled intervals.
         """
-        # Safely extract all marginal trees as independent objects
-        trees = ts.aslist()
+        import tskit
         
-        # Count the number of sites falling within each tree's genomic span
-        segregating_sites = [tree.num_sites for tree in trees]
+        trees = []
+        L = ts.sequence_length
+        intervals = []
         
-        return cls(trees=trees, segregating_sites=segregating_sites)
+        for tree in ts.trees():
+            # Build a standalone TableCollection for the marginal tree
+            tables = tskit.TableCollection(sequence_length=L)
+            
+            # Isolate samples and internal nodes
+            samples = list(tree.samples())
+            internal_nodes = [u for u in tree.nodes() if u not in samples]
+            
+            # Rank internal nodes by their time (age)
+            internal_nodes.sort(key=lambda u: tree.time(u))
+            
+            node_map = {}
+            
+            # 1. Add samples first so they are strictly numbered 0 to n-1
+            for u in samples:
+                node_map[u] = tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=tree.time(u))
+                
+            # 2. Add internal nodes sequentially by rank
+            for u in internal_nodes:
+                node_map[u] = tables.nodes.add_row(flags=0, time=tree.time(u))
+                
+            # 3. Reconstruct edges using the new ranked IDs
+            for u in tree.nodes():
+                parent = tree.parent(u)
+                if parent != tskit.NULL:
+                    tables.edges.add_row(
+                        left=0, right=L,
+                        parent=node_map[parent], child=node_map[u]
+                    )
+                    
+            tables.sort()
+            
+            # Extract the independent, properly ranked tree
+            new_tree = tables.tree_sequence().first(sample_lists = True)
+            trees.append(new_tree)
+            
+            # Scale each tree's absolute boundaries to a 0-1 proportion
+            intervals.append((tree.interval[0] / L, tree.interval[1] / L))
+            
+        return cls(trees=trees, intervals=intervals)
     
     def simulate_sfs(self, mutation_rate: float, return_expected: bool = False) -> np.ndarray:
         """
         Simulates an unfolded Site Frequency Spectrum (SFS) for the tree sequence.
 
         This analytically calculates the expected number of mutations for each 
-        derived allele frequency based on branch lengths and genomic span, and 
-        then draws the simulated counts from a Poisson distribution.
+        derived allele frequency based on absolute branch lengths and genomic span, 
+        and draws the simulated counts from a Poisson distribution.
 
         Args:
             mutation_rate (float): The mutation rate per base pair per generation.
             return_expected (bool, optional): If True, returns the continuous 
-                expected SFS without applying stochastic Poisson sampling. 
-                Defaults to False.
+                expected SFS without applying stochastic Poisson sampling.
 
         Returns:
-            np.ndarray: A 1D array of size (n_samples + 1) where the index `k` 
-            represents the count of sites with exactly `k` derived alleles. 
-            Indices 0 and n_samples will be 0.
+            np.ndarray: A 1D array of size (n_samples + 1)
         """
         if not self.trees:
             return np.array([])
             
-        # Total number of samples in the trees
         n_samples = self.trees[0].num_samples
-        
-        # Initialize an array to hold the expected SFS (size n+1 so index matches frequency)
         expected_sfs = np.zeros(n_samples + 1)
         
         for tree in self.trees:
+            # We use tskit's native tree.span here as the SFS calculation 
+            # requires absolute genome lengths to pair with the absolute mutation rate.
             span = tree.span
             if span == 0:
                 continue
@@ -273,19 +299,14 @@ class PGTreeSequence:
             for u in tree.nodes():
                 parent = tree.parent(u)
                 
-                # Exclude the root (it has no parent branch)
                 if parent != tskit.NULL:
                     branch_length = max(tree.time(parent) - tree.time(u), 0.0)
-                    
-                    # Number of sample leaves subtended by this branch
-                    # len(tree.samples(u)) is very fast in tskit (O(1) slice)
                     k = len(tree.samples(u))
                     
-                    # Expected mutations: rate * branch_length * genomic_span
+                    # Expected mutations: rate * branch_length * absolute genomic span
                     expected_sfs[k] += mutation_rate * branch_length * span
                     
         if return_expected:
             return expected_sfs
         else:
-            # Draw actual simulated mutation counts from a Poisson distribution
             return np.random.poisson(expected_sfs)

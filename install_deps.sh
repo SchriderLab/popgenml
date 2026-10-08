@@ -60,7 +60,8 @@ mkdir -p build
 cd build
 
 # Relate compiles binaries directly into the relate/bin folder
-cmake ..
+# Force CMake to accept the older configuration by passing the policy flag
+cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 make -j4
 
 # Create symlinks for all compiled binaries so they are accessible in the PATH
@@ -75,6 +76,7 @@ echo "Relate successfully installed."
 
 
 # --- 3. Install SINGER (popgenmethods) ---
+# --- 3. Install SINGER (popgenmethods) ---
 echo ""
 echo "[3/3] Installing SINGER..."
 cd "$SRC_DIR"
@@ -86,43 +88,39 @@ else
     cd SINGER && git pull && cd ..
 fi
 
-cd SINGER
-mkdir -p build
-cd build
+# SINGER binaries are pre-compiled in the repository's releases folder
+RELEASE_DIR="$SRC_DIR/SINGER/releases/singer-0.1.9-beta-linux-x86_64"
 
-# SINGER uses a standard CMake configuration
-cmake ..
-make -j4
+echo "Symlinking SINGER binaries from releases to $BIN_DIR..."
+if [ -d "$RELEASE_DIR" ]; then
+    # Force executable permissions on all files in the release directory
+    chmod +x "$RELEASE_DIR"/*
 
-# SINGER builds the 'singer_master' and 'convert_to_tskit' binaries.
-# We symlink any compiled executables from the build directory.
-echo "Symlinking SINGER binaries to $BIN_DIR..."
-for exe in "$SRC_DIR"/SINGER/build/*; do
-    if [ -f "$exe" ] && [ -x "$exe" ]; then
-        ln -sf "$exe" "$BIN_DIR/"
-    fi
-done
-
-echo "SINGER successfully installed."
-
-
-# --- 4. Final PATH configuration check ---
-echo ""
-echo "====================================================="
-echo " Installation Complete!"
-echo "====================================================="
-
-# Check if ~/.local/bin is actually in the user's PATH
-if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    echo "WARNING: $BIN_DIR is not currently in your system PATH."
-    echo ""
-    echo "To use 'slim', 'Relate', and 'singer_master' from anywhere,"
-    echo "add the following line to your ~/.bashrc or ~/.zshrc file:"
-    echo ""
-    echo "    export PATH=\"$BIN_DIR:\$PATH\""
-    echo ""
-    echo "Then reload your terminal by running: source ~/.bashrc"
+    for exe in "$RELEASE_DIR"/*; do
+        if [ -f "$exe" ] && [ -x "$exe" ]; then
+            ln -sf "$exe" "$BIN_DIR/"
+        fi
+    done
+    echo "SINGER successfully installed."
 else
-    echo "$BIN_DIR is already in your PATH. You are ready to go!"
-    echo "Try running 'slim -v', 'Relate', and 'singer_master' to verify."
+    echo "Error: SINGER release directory not found at $RELEASE_DIR"
+fi
+
+
+# --- 4. Update ~/.bashrc ---
+BASHRC="$HOME/.bashrc"
+
+echo ""
+echo "[4/4] Configuring PATH..."
+
+# Check if BIN_DIR is already in the bashrc file
+if grep -qF "$BIN_DIR" "$BASHRC"; then
+    echo "$BIN_DIR is already in your $BASHRC."
+else
+    echo "Appending $BIN_DIR to PATH in $BASHRC..."
+    echo "" >> "$BASHRC"
+    echo "# Added by popgen tools install script" >> "$BASHRC"
+    echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$BASHRC"
+    
+    source ~/.baschrc
 fi
