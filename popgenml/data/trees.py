@@ -13,7 +13,7 @@ from Bio import Phylo
 
 @dataclass
 class PGTreeSequence:
-    """
+    r"""
     A representation of a sequence of marginal trees mapped to genomic intervals.
     """
     trees: List[tskit.Tree]
@@ -25,7 +25,7 @@ class PGTreeSequence:
 
     @classmethod
     def from_newick_tsv(cls, tsv_path: str, L: float) -> "PGTreeSequence":
-        """
+        r"""
         Loads a TSV file containing Newick trees and constructs a PGTreeSequence.
         
         Args:
@@ -146,7 +146,7 @@ class PGTreeSequence:
         return ts.first()
 
     def iter_overlapping_intervals(self, other: 'PGTreeSequence') -> Iterable[Tuple[tskit.Tree, tskit.Tree, float]]:
-        """
+        r"""
         Yields overlapping tree pairs and the length of their overlap.
 
         Since two tree sequences may have different recombination breakpoints, this 
@@ -176,7 +176,7 @@ class PGTreeSequence:
                 j += 1
 
     def average_kc_distance(self, other: 'PGTreeSequence') -> float:
-        """
+        r"""
         Computes the interval-weighted average Kendall-Colijn (KC) distance.
 
         Args:
@@ -191,7 +191,7 @@ class PGTreeSequence:
         )
 
     def average_rf_distance(self, other: 'PGTreeSequence') -> float:
-        """
+        r"""
         Computes the interval-weighted average unweighted Robinson-Foulds (RF) distance.
 
         Args:
@@ -206,7 +206,7 @@ class PGTreeSequence:
         )
 
     def average_rms_log_coal_time(self, other: 'PGTreeSequence', epsilon: float = 1e-8) -> float:
-        """
+        r"""
         Computes the interval-weighted root-mean-square (RMS) difference of log 
         coalescent times.
 
@@ -224,7 +224,7 @@ class PGTreeSequence:
         )
 
     def breakpoint_chamfer_distance(self, other: 'PGTreeSequence') -> float:
-        """
+        r"""
         Computes the symmetric mean Chamfer distance between sequence breakpoints.
 
         Breakpoints are defined as the right-side boundary of each interval 
@@ -261,7 +261,7 @@ class PGTreeSequence:
         return float(dist_1_to_2 + dist_2_to_1)
     
     def average_symmetric_kl_divergence(self, other: 'PGTreeSequence', epsilon: float = 1e-9) -> float:
-        """
+        r"""
         Computes the interval-weighted average symmetric Kullback-Leibler (KL) divergence 
         of implied site pattern distributions.
 
@@ -280,7 +280,7 @@ class PGTreeSequence:
 
     @staticmethod
     def _calculate_symmetric_kl(t1: tskit.Tree, t2: tskit.Tree, epsilon: float) -> float:
-        """Helper method to compute symmetric KL divergence for two individual trees."""
+        r"""Helper method to compute symmetric KL divergence for two individual trees."""
         
         def get_clade_branch_lengths(tree: tskit.Tree) -> dict:
             """Extracts branch lengths for every unique clade in the tree."""
