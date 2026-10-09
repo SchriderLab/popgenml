@@ -9,3 +9,4 @@ ortools
 pyslim
 zstandard
 pandas
+biopython
