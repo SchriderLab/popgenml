@@ -5,21 +5,16 @@ import tskit
 from dataclasses import dataclass
 from typing import List, Iterable, Tuple
 
+import io
+import csv
+
+import tskit
+from Bio import Phylo
+
 @dataclass
 class PGTreeSequence:
     """
     A representation of a sequence of marginal trees mapped to genomic intervals.
-
-    This class wraps a list of `tskit.Tree` objects and aligns them with a 
-    corresponding list of scaled genomic intervals (0.0 to 1.0). It provides methods 
-    to compare tree topologies, breakpoints, and coalescent times against other 
-    `PGTreeSequence` instances by computing interval-weighted averages.
-
-    Attributes:
-        trees (List[tskit.Tree]): A list of sequential marginal trees.
-        intervals (List[Tuple[float, float]]): The [left, right] bounding positions 
-            on the chromosome for each tree, scaled from 0.0 to 1.0. The length 
-            of this list must exactly match the length of `trees`.
     """
     trees: List[tskit.Tree]
     intervals: List[Tuple[float, float]]
@@ -27,6 +22,128 @@ class PGTreeSequence:
     def __post_init__(self):
         if len(self.trees) != len(self.intervals):
             raise ValueError("Length of 'trees' and 'intervals' must be identical.")
+
+    @classmethod
+    def from_newick_tsv(cls, tsv_path: str, L: float) -> "PGTreeSequence":
+        """
+        Loads a TSV file containing Newick trees and constructs a PGTreeSequence.
+        
+        Args:
+            tsv_path: Path to the TSV file (Start_BP, End_BP, Newick)
+            L: Total sequence length for scaling intervals to [0.0, 1.0]
+        """
+        trees = []
+        intervals = []
+        
+        with open(tsv_path, 'r') as f:
+            header = next(f)  # Skip the header
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                    
+                start_bp = float(parts[0])
+                end_bp = float(parts[1])
+                nwk_str = parts[2]
+                
+                # Scale intervals to [0.0, 1.0]
+                left = start_bp / L
+                right = end_bp / L
+                intervals.append((left, right))
+                
+                # Protect against zero-length spans
+                span = max(right - left, 1e-12)
+                
+                # Parse Newick string into a tskit.Tree
+                tree = cls._newick_to_tskit_tree(nwk_str, span=span)
+                trees.append(tree)
+                
+        return cls(trees=trees, intervals=intervals)
+
+    @staticmethod
+    def _newick_to_tskit_tree(nwk_str: str, span: float = 1.0) -> tskit.Tree:
+        """
+        Helper method to parse a single Newick string into a tskit.Tree
+        by wrapping it in a single-tree tskit.TableCollection.
+        """
+        # Parse the Newick string
+        tree = Phylo.read(io.StringIO(nwk_str), "newick")
+        tables = tskit.TableCollection(sequence_length=span)
+        
+        # 1. Compute node times via post-order traversal (time = distance from leaves)
+        clade_to_time = {}
+        for clade in tree.find_clades(order="postorder"):
+            if clade.is_terminal():
+                clade_to_time[clade] = 0.0
+            else:
+                # Time is child's time + branch length. 
+                # We enforce a tiny epsilon for 0-length branches because tskit 
+                # strictly requires parent time > child time.
+                c_times = []
+                for c in clade.clades:
+                    child_time = clade_to_time[c]
+                    b_len = c.branch_length or 0.0
+                    if b_len <= 0: 
+                        b_len = 1e-9 
+                    c_times.append(child_time + b_len)
+                clade_to_time[clade] = max(c_times)
+                
+        # 2. Map sample names (leaves) to sequential tskit node IDs
+        clade_to_node = {}
+        leaf_map = {}
+        for clade in tree.get_terminals():
+            try:
+                leaf_id = int(clade.name)
+                leaf_map[leaf_id] = clade
+            except (ValueError, TypeError):
+                pass
+                
+        if not leaf_map:
+            raise ValueError("Newick leaves must have integer names to map to sample IDs.")
+            
+        max_leaf_id = max(leaf_map.keys())
+        
+        # Ensure contiguous sample node IDs from 0 to max_leaf_id
+        # (This ensures tree.time(u) works perfectly for 0-indexed haploids)
+        for i in range(max_leaf_id + 1):
+            if i in leaf_map:
+                clade = leaf_map[i]
+                node_id = tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=clade_to_time[clade])
+                clade_to_node[clade] = node_id
+            else:
+                # Insert missing nodes as dummy samples to preserve ID indexing
+                tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0.0)
+
+        # 3. Add internal nodes
+        for clade in tree.find_clades(order="postorder"):
+            if not clade.is_terminal():
+                time_val = clade_to_time[clade]
+                node_id = tables.nodes.add_row(flags=0, time=time_val)
+                clade_to_node[clade] = node_id
+
+        # 4. Add edges
+        for clade in tree.find_clades():
+            if clade in clade_to_node:
+                parent_id = clade_to_node[clade]
+                for child in clade.clades:
+                    child_id = clade_to_node[child]
+                    tables.edges.add_row(
+                        left=0.0, 
+                        right=span, 
+                        parent=parent_id, 
+                        child=child_id
+                    )
+
+        # 5. Sort tables and finalize the tree sequence
+        tables.sort()
+        ts = tables.tree_sequence()
+        
+        # Return the actual single tree object
+        return ts.first()
 
     def iter_overlapping_intervals(self, other: 'PGTreeSequence') -> Iterable[Tuple[tskit.Tree, tskit.Tree, float]]:
         """
