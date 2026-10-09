@@ -259,6 +259,74 @@ class PGTreeSequence:
         dist_2_to_1 = nearest_distances(bp2, bp1).mean()
         
         return float(dist_1_to_2 + dist_2_to_1)
+    
+    def average_symmetric_kl_divergence(self, other: 'PGTreeSequence', epsilon: float = 1e-9) -> float:
+        """
+        Computes the interval-weighted average symmetric Kullback-Leibler (KL) divergence 
+        of implied site pattern distributions.
+
+        Args:
+            other (PGTreeSequence): The other tree sequence to compare against.
+            epsilon (float, optional): Additive smoothing constant to prevent log(0) 
+                errors for clades present in one tree but not the other. Defaults to 1e-9.
+
+        Returns:
+            float: The weighted average symmetric KL divergence across the sequence.
+        """
+        return sum(
+            self._calculate_symmetric_kl(t1, t2, epsilon) * weight 
+            for t1, t2, weight in self.iter_overlapping_intervals(other)
+        )
+
+    @staticmethod
+    def _calculate_symmetric_kl(t1: tskit.Tree, t2: tskit.Tree, epsilon: float) -> float:
+        """Helper method to compute symmetric KL divergence for two individual trees."""
+        
+        def get_clade_branch_lengths(tree: tskit.Tree) -> dict:
+            """Extracts branch lengths for every unique clade in the tree."""
+            clade_lengths = {}
+            for u in tree.nodes():
+                parent = tree.parent(u)
+                if parent != tskit.NULL:
+                    branch_length = tree.time(parent) - tree.time(u)
+                    if branch_length > 0:
+                        # A clade is defined by the frozenset of samples under this node
+                        clade = frozenset(tree.samples(u))
+                        clade_lengths[clade] = clade_lengths.get(clade, 0.0) + branch_length
+            return clade_lengths
+
+        # 1. Get clade -> branch length mappings
+        lengths1 = get_clade_branch_lengths(t1)
+        lengths2 = get_clade_branch_lengths(t2)
+
+        sum1 = sum(lengths1.values())
+        sum2 = sum(lengths2.values())
+
+        # If either tree has no branch lengths (e.g. star phylogeny with times=0), distance is undefined
+        if sum1 == 0 or sum2 == 0:
+            return float('nan')
+
+        # 2. Get the union of all unique clades C = C(T1) U C(T2)
+        union_clades = set(lengths1.keys()).union(set(lengths2.keys()))
+        
+        # Normalization factor for the smoothed probabilities
+        # Since sum(p_raw) == 1, the new sum after adding epsilon to |C| clades is 1 + |C|*epsilon
+        Z = 1.0 + len(union_clades) * epsilon
+        
+        sym_kl = 0.0
+        
+        # 3. Compute the smoothed probabilities and the symmetric KL divergence
+        for c in union_clades:
+            p1_raw = lengths1.get(c, 0.0) / sum1
+            p2_raw = lengths2.get(c, 0.0) / sum2
+            
+            P_c = (p1_raw + epsilon) / Z
+            Q_c = (p2_raw + epsilon) / Z
+            
+            # D_sKL = 0.5 * ( P(c)*log(P(c)/Q(c)) + Q(c)*log(Q(c)/P(c)) )
+            sym_kl += 0.5 * (P_c * np.log(P_c / Q_c) + Q_c * np.log(Q_c / P_c))
+            
+        return float(sym_kl)
 
     @staticmethod
     def _calculate_rms_log_tmrca(t1: tskit.Tree, t2: tskit.Tree, epsilon: float) -> float:
