@@ -37,6 +37,8 @@ pip install ninja setuptools wheel
 # Install core library
 pip install torch_geometric
 
+export MAX_JOBS=$(nproc)
+
 # Install extensions from source without build isolation
 # (This forces pip to compile using the torch version installed in Step 2)
 FORCE_CUDA=1 pip install --verbose --no-build-isolation git+https://github.com/pyg-team/pyg-lib.git
