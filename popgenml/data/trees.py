@@ -1,497 +1,375 @@
-# -*- coding: utf-8 -*-
-import itertools
+from dataclasses import dataclass
+from typing import List
 import numpy as np
 import tskit
-from dataclasses import dataclass
-from typing import List, Iterable, Tuple
-
-import io
-import csv
 
 import tskit
-from Bio import Phylo
+from typing import Tuple, List, Optional
+
+def extract_standardized_trees(
+    ts: tskit.TreeSequence, 
+    samples_to_keep: Optional[List[int]] = None
+) -> Tuple[List[tskit.Tree], List[int]]:
+    r"""
+    Converts a tskit TreeSequence into a list of standardized trees and a list of SNP counts.
+    
+    For each marginal tree, this rebuilds the tree such that:
+      1. Leaves (samples) retain IDs 0 to n-1.
+      2. Internal nodes are assigned IDs n to 2n-2, sorted strictly ascending by coalescent time.
+      
+    Args:
+        ts (tskit.TreeSequence): The input tree sequence (e.g., from msprime or SLiM).
+        samples_to_keep (List[int], optional): A list of sample node IDs to retain. 
+            If provided, the tree sequence is downsampled to only these leaves 
+            using tskit.simplify() before extraction.
+            
+    Returns:
+        Tuple[List[tskit.Tree], List[int]]: A tuple containing the list of standardized 
+        tskit.Tree objects and a list of the number of sites (SNPs) for each tree.
+    """
+    # Downsample the tree sequence if a subset of samples is requested
+    if samples_to_keep is not None:
+        # This correctly prunes the topology and re-indexes the remaining samples 0 to k-1.
+        # By default, it also filters out sites that are no longer polymorphic in the subset.
+        ts = ts.simplify(samples=samples_to_keep)
+        
+    trees = []
+    snps = []
+    
+    for tree in ts.trees():
+        # Record the number of SNPs (sites) on this specific marginal tree
+        snps.append(tree.num_sites)
+        
+        # Initialize a new table collection for this single tree's span
+        tables = tskit.TableCollection(sequence_length=tree.span)
+        old_to_new = {}
+        
+        # 1. Add samples (leaves) first so they get IDs 0 to n-1
+        samples = list(tree.samples())
+        for u in samples:
+            old_to_new[u] = tables.nodes.add_row(time=tree.time(u), flags=tskit.NODE_IS_SAMPLE)
+            
+        # 2. Get all internal (non-sample) nodes and sort them by coalescent time
+        internal_nodes = [u for u in tree.nodes() if not tree.is_sample(u)]
+        internal_nodes.sort(key=lambda u: tree.time(u))
+        
+        # Add internal nodes to tables, which automatically assigns them ascending IDs (n, n+1, ...)
+        for u in internal_nodes:
+            old_to_new[u] = tables.nodes.add_row(time=tree.time(u))
+            
+        # 3. Reconstruct the edges using the new node IDs
+        for u in tree.nodes():
+            for c in tree.children(u):
+                tables.edges.add_row(
+                    left=0, 
+                    right=tree.span, 
+                    parent=old_to_new[u], 
+                    child=old_to_new[c]
+                )
+                
+        # 4. Sort tables and generate the new standardized tree
+        tables.sort()
+        new_ts = tables.tree_sequence()
+        trees.append(new_ts.first())
+        
+    return trees, snps
 
 @dataclass
 class PGTreeSequence:
     r"""
-    A representation of a sequence of marginal trees mapped to genomic intervals.
+    A representation of a sequence of marginal trees mapped to SNP counts.
+
+    This class provides tools to compare two different tree sequences (e.g., 
+    predicted vs. true simulated trees) site-by-site using topological 
+    metrics and coalescent time errors, as well as structural breakpoint distances.
+
+    Attributes:
+        trees (List[tskit.Tree]): A list of marginal trees.
+        snps (List[int]): A list of the number of SNPs corresponding to each tree.
     """
     trees: List[tskit.Tree]
-    intervals: List[Tuple[float, float]]
+    snps: List[int]
     
     def __post_init__(self):
-        if len(self.trees) != len(self.intervals):
-            raise ValueError("Length of 'trees' and 'intervals' must be identical.")
-
+        r"""
+        Validates the initialization parameters and computes the total sequence length.
+        
+        Raises:
+            ValueError: If the number of trees does not match the number of SNP intervals.
+        """
+        if len(self.trees) != len(self.snps):
+            raise ValueError("Length of 'trees' and 'snps' must be identical.")
+        self.total_snps = sum(self.snps)
+        
     @classmethod
-    def from_newick_tsv(cls, tsv_path: str, L: float) -> "PGTreeSequence":
-        r"""
-        Loads a TSV file containing Newick trees and constructs a PGTreeSequence.
+    def from_tskit(
+        cls, 
+        ts: tskit.TreeSequence, 
+        samples_to_keep: Optional[List[int]] = None,
+        positions: Optional[np.ndarray] = None 
+    ) -> "PGTreeSequence":
         
-        Args:
-            tsv_path: Path to the TSV file (Start_BP, End_BP, Newick)
-            L: Total sequence length for scaling intervals to [0.0, 1.0]
-        """
+        if samples_to_keep is not None:
+            ts = ts.simplify(samples=samples_to_keep)
+            
+        # ---------------------------------------------------------
+        # Use provided positions, or fallback to the tree sequence's sites
+        # ---------------------------------------------------------
+        if positions is not None:
+            # Assume the user provided the already-filtered valid positions
+            valid_positions = np.array(positions)
+        elif ts.num_sites > 0:
+            G = ts.genotype_matrix()
+            is_ref = (G == 0)
+            is_alt = (G == 1)
+            valid_sites_mask = is_ref.any(axis=1) & is_alt.any(axis=1)
+            valid_positions = ts.sites_position[valid_sites_mask]
+        else:
+            valid_positions = np.array([])
+            
         trees = []
-        intervals = []
-        
-        with open(tsv_path, 'r') as f:
-            header = next(f)  # Skip the header
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                parts = line.split()
-                if len(parts) < 3:
-                    continue
-                    
-                start_bp = float(parts[0])
-                end_bp = float(parts[1])
-                nwk_str = parts[2]
-                
-                # Scale intervals to [0.0, 1.0]
-                left = start_bp / L
-                right = end_bp / L
-                intervals.append((left, right))
-                
-                # Protect against zero-length spans
-                span = max(right - left, 1e-12)
-                
-                # Parse Newick string into a tskit.Tree
-                tree = cls._newick_to_tskit_tree(nwk_str, span=span)
-                trees.append(tree)
-                
-        return cls(trees=trees, intervals=intervals)
-
-    @staticmethod
-    def _newick_to_tskit_tree(nwk_str: str, span: float = 1.0) -> tskit.Tree:
-        """
-        Helper method to parse a single Newick string into a tskit.Tree
-        by wrapping it in a single-tree tskit.TableCollection.
-        """
-        # Parse the Newick string
-        tree = Phylo.read(io.StringIO(nwk_str), "newick")
-        tables = tskit.TableCollection(sequence_length=span)
-        
-        # 1. Compute node times via post-order traversal (time = distance from leaves)
-        clade_to_time = {}
-        for clade in tree.find_clades(order="postorder"):
-            if clade.is_terminal():
-                clade_to_time[clade] = 0.0
-            else:
-                # Time is child's time + branch length. 
-                # We enforce a tiny epsilon for 0-length branches because tskit 
-                # strictly requires parent time > child time.
-                c_times = []
-                for c in clade.clades:
-                    child_time = clade_to_time[c]
-                    b_len = c.branch_length or 0.0
-                    if b_len <= 0: 
-                        b_len = 1e-9 
-                    c_times.append(child_time + b_len)
-                clade_to_time[clade] = max(c_times)
-                
-        # 2. Map sample names (leaves) to sequential tskit node IDs
-        clade_to_node = {}
-        leaf_map = {}
-        for clade in tree.get_terminals():
-            try:
-                leaf_id = int(clade.name)
-                leaf_map[leaf_id] = clade
-            except (ValueError, TypeError):
-                pass
-                
-        if not leaf_map:
-            raise ValueError("Newick leaves must have integer names to map to sample IDs.")
-            
-        max_leaf_id = max(leaf_map.keys())
-        
-        # Ensure contiguous sample node IDs from 0 to max_leaf_id
-        # (This ensures tree.time(u) works perfectly for 0-indexed haploids)
-        for i in range(max_leaf_id + 1):
-            if i in leaf_map:
-                clade = leaf_map[i]
-                node_id = tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=clade_to_time[clade])
-                clade_to_node[clade] = node_id
-            else:
-                # Insert missing nodes as dummy samples to preserve ID indexing
-                tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0.0)
-
-        # 3. Add internal nodes
-        for clade in tree.find_clades(order="postorder"):
-            if not clade.is_terminal():
-                time_val = clade_to_time[clade]
-                node_id = tables.nodes.add_row(flags=0, time=time_val)
-                clade_to_node[clade] = node_id
-
-        # 4. Add edges
-        for clade in tree.find_clades():
-            if clade in clade_to_node:
-                parent_id = clade_to_node[clade]
-                for child in clade.clades:
-                    child_id = clade_to_node[child]
-                    tables.edges.add_row(
-                        left=0.0, 
-                        right=span, 
-                        parent=parent_id, 
-                        child=child_id
-                    )
-
-        # 5. Sort tables and finalize the tree sequence
-        tables.sort()
-        ts = tables.tree_sequence()
-        
-        # Return the actual single tree object
-        return ts.first()
-
-    def iter_overlapping_intervals(self, other: 'PGTreeSequence') -> Iterable[Tuple[tskit.Tree, tskit.Tree, float]]:
-        r"""
-        Yields overlapping tree pairs and the length of their overlap.
-
-        Since two tree sequences may have different recombination breakpoints, this 
-        generator computes the intersections of their intervals, returning the trees 
-        that share genomic space and the weight (size) of that shared interval.
-
-        Yields:
-            Tuple[tskit.Tree, tskit.Tree, float]: Tree from self, Tree from other, 
-            and the scaled length of their overlapping interval.
-        """
-        i, j = 0, 0
-        while i < len(self.trees) and j < len(other.trees):
-            t1, int1 = self.trees[i], self.intervals[i]
-            t2, int2 = other.trees[j], other.intervals[j]
-            
-            # Find the overlapping continuous region
-            left = max(int1[0], int2[0])
-            right = min(int1[1], int2[1])
-            
-            if left < right:
-                yield t1, t2, float(right - left)
-            
-            # Advance the pointer of the interval that ends first
-            if int1[1] < int2[1]:
-                i += 1
-            else:
-                j += 1
-
-    def average_kc_distance(self, other: 'PGTreeSequence') -> float:
-        r"""
-        Computes the interval-weighted average Kendall-Colijn (KC) distance.
-
-        Args:
-            other (PGTreeSequence): The other tree sequence to compare against.
-
-        Returns:
-            float: The weighted average KC distance across the entire [0, 1] scaled chromosome.
-        """
-        return sum(
-            t1.kc_distance(t2) * weight 
-            for t1, t2, weight in self.iter_overlapping_intervals(other)
-        )
-
-    def average_rf_distance(self, other: 'PGTreeSequence') -> float:
-        r"""
-        Computes the interval-weighted average unweighted Robinson-Foulds (RF) distance.
-
-        Args:
-            other (PGTreeSequence): The other tree sequence to compare against.
-
-        Returns:
-            float: The weighted average RF distance across the [0, 1] scaled chromosome.
-        """
-        return sum(
-            t1.rf_distance(t2) * weight 
-            for t1, t2, weight in self.iter_overlapping_intervals(other)
-        )
-
-    def average_rms_log_coal_time(self, other: 'PGTreeSequence', epsilon: float = 1e-8) -> float:
-        r"""
-        Computes the interval-weighted root-mean-square (RMS) difference of log 
-        coalescent times.
-
-        Args:
-            other (PGTreeSequence): The other tree sequence to compare against.
-            epsilon (float, optional): A pseudo-count to prevent log(0) domain 
-                errors for zero-length branches. Defaults to 1e-8.
-
-        Returns:
-            float: The weighted average RMS log TMRCA difference across the sequence.
-        """
-        return sum(
-            self._calculate_rms_log_tmrca(t1, t2, epsilon) * weight 
-            for t1, t2, weight in self.iter_overlapping_intervals(other)
-        )
-
-    def breakpoint_chamfer_distance(self, other: 'PGTreeSequence') -> float:
-        r"""
-        Computes the symmetric mean Chamfer distance between sequence breakpoints.
-
-        Breakpoints are defined as the right-side boundary of each interval 
-        (excluding the final sequence boundary at 1.0).
-
-        Args:
-            other (PGTreeSequence): The other tree sequence to compare against.
-
-        Returns:
-            float: The computed Chamfer distance. Returns 0.0 if neither 
-            sequence has breakpoints, or NaN if only one sequence lacks breakpoints.
-        """
-        # Breakpoints are the right boundaries of all intervals except the very last one
-        bp1 = np.array([interval[1] for interval in self.intervals[:-1]])
-        bp2 = np.array([interval[1] for interval in other.intervals[:-1]])
-        
-        # Handle cases where one or both tree sequences contain no breakpoints (only 1 tree)
-        if len(bp1) == 0 and len(bp2) == 0:
-            return 0.0
-        if len(bp1) == 0 or len(bp2) == 0:
-            return float('nan') # Distance is mathematically undefined if one set is empty
-            
-        def nearest_distances(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-            """Finds the distance from each point in 'a' to the nearest point in 'b'."""
-            idx = np.searchsorted(b, a)
-            idx_left = np.clip(idx - 1, 0, len(b) - 1)
-            idx_right = np.clip(idx, 0, len(b) - 1)
-            
-            return np.minimum(np.abs(a - b[idx_left]), np.abs(a - b[idx_right]))
-            
-        dist_1_to_2 = nearest_distances(bp1, bp2).mean()
-        dist_2_to_1 = nearest_distances(bp2, bp1).mean()
-        
-        return float(dist_1_to_2 + dist_2_to_1)
-    
-    def average_symmetric_kl_divergence(self, other: 'PGTreeSequence', epsilon: float = 1e-9) -> float:
-        r"""
-        Computes the interval-weighted average symmetric Kullback-Leibler (KL) divergence 
-        of implied site pattern distributions.
-
-        Args:
-            other (PGTreeSequence): The other tree sequence to compare against.
-            epsilon (float, optional): Additive smoothing constant to prevent log(0) 
-                errors for clades present in one tree but not the other. Defaults to 1e-9.
-
-        Returns:
-            float: The weighted average symmetric KL divergence across the sequence.
-        """
-        return sum(
-            self._calculate_symmetric_kl(t1, t2, epsilon) * weight 
-            for t1, t2, weight in self.iter_overlapping_intervals(other)
-        )
-
-    @staticmethod
-    def _calculate_symmetric_kl(t1: tskit.Tree, t2: tskit.Tree, epsilon: float) -> float:
-        r"""Helper method to compute symmetric KL divergence for two individual trees."""
-        
-        def get_clade_branch_lengths(tree: tskit.Tree) -> dict:
-            """Extracts branch lengths for every unique clade in the tree."""
-            clade_lengths = {}
-            for u in tree.nodes():
-                parent = tree.parent(u)
-                if parent != tskit.NULL:
-                    branch_length = tree.time(parent) - tree.time(u)
-                    if branch_length > 0:
-                        # A clade is defined by the frozenset of samples under this node
-                        clade = frozenset(tree.samples(u))
-                        clade_lengths[clade] = clade_lengths.get(clade, 0.0) + branch_length
-            return clade_lengths
-
-        # 1. Get clade -> branch length mappings
-        lengths1 = get_clade_branch_lengths(t1)
-        lengths2 = get_clade_branch_lengths(t2)
-
-        sum1 = sum(lengths1.values())
-        sum2 = sum(lengths2.values())
-
-        # If either tree has no branch lengths (e.g. star phylogeny with times=0), distance is undefined
-        if sum1 == 0 or sum2 == 0:
-            return float('nan')
-
-        # 2. Get the union of all unique clades C = C(T1) U C(T2)
-        union_clades = set(lengths1.keys()).union(set(lengths2.keys()))
-        
-        # Normalization factor for the smoothed probabilities
-        # Since sum(p_raw) == 1, the new sum after adding epsilon to |C| clades is 1 + |C|*epsilon
-        Z = 1.0 + len(union_clades) * epsilon
-        
-        sym_kl = 0.0
-        
-        # 3. Compute the smoothed probabilities and the symmetric KL divergence
-        for c in union_clades:
-            p1_raw = lengths1.get(c, 0.0) / sum1
-            p2_raw = lengths2.get(c, 0.0) / sum2
-            
-            P_c = (p1_raw + epsilon) / Z
-            Q_c = (p2_raw + epsilon) / Z
-            
-            # D_sKL = 0.5 * ( P(c)*log(P(c)/Q(c)) + Q(c)*log(Q(c)/P(c)) )
-            sym_kl += 0.5 * (P_c * np.log(P_c / Q_c) + Q_c * np.log(Q_c / P_c))
-            
-        return float(sym_kl)
-
-    @staticmethod
-    def _calculate_rms_log_tmrca(t1: tskit.Tree, t2: tskit.Tree, epsilon: float) -> float:
-        """Helper method to compute the RMS log TMRCA for two individual trees."""
-        common_samples = list(set(t1.samples()).intersection(t2.samples()))
-        
-        # If there are fewer than 2 common samples, we cannot compute pairwise TMRCA
-        if len(common_samples) < 2:
-            return 0.0
-            
-        sq_diff_sum = 0.0
-        count = 0
-        
-        for u, v in itertools.combinations(common_samples, 2):
-            mrca1 = t1.mrca(u, v)
-            mrca2 = t2.mrca(u, v)
-            
-            # Extract times, using max() to prevent log(0) domain errors 
-            time1 = max(t1.time(mrca1), epsilon) if mrca1 != tskit.NULL else epsilon
-            time2 = max(t2.time(mrca2), epsilon) if mrca2 != tskit.NULL else epsilon
-            
-            diff = np.log(time1) - np.log(time2)
-            sq_diff_sum += diff ** 2
-            count += 1
-            
-        return np.sqrt(sq_diff_sum / count) if count > 0 else 0.0
-    
-    def coalescent_time_histogram(self, bins=50, time_range: tuple = None) -> tuple:
-        """
-        Computes the histogram of coalescent times across the tree sequence.
-
-        This extracts the times of all internal nodes (coalescent events) 
-        across all marginal trees, weighted by the scaled genomic interval 
-        span (0-1) of that tree.
-
-        Args:
-            bins (int or sequence of scalars, optional): The number of bins or 
-                an array of bin edges. Defaults to 50.
-            time_range (tuple, optional): The lower and upper range of the bins 
-                (min_time, max_time).
-
-        Returns:
-            tuple: A tuple (counts, bin_edges) identical to numpy.histogram.
-        """
-        times = []
-        weights = []
-        
-        for tree, interval in zip(self.trees, self.intervals):
-            span = interval[1] - interval[0]
-            if span <= 0:
-                continue
-                
-            # Extract times for all internal nodes (coalescent events)
-            for u in tree.nodes():
-                if tree.is_internal(u):
-                    times.append(tree.time(u))
-                    weights.append(span)
-                    
-        if not times:
-            return np.histogram([], bins=bins, range=time_range)
-            
-        return np.histogram(times, bins=bins, range=time_range, weights=weights)
-    
-    @classmethod
-    def from_tskit(cls, ts: tskit.TreeSequence) -> 'PGTreeSequence':
-        """
-        Creates a PGTreeSequence directly from a standard tskit.TreeSequence.
-
-        Extracts the marginal trees and scales their absolute genomic intervals 
-        into relative 0.0 to 1.0 bounding proportions.
-
-        Args:
-            ts (tskit.TreeSequence): The input tskit tree sequence.
-
-        Returns:
-            PGTreeSequence: A new instance populated with the marginal trees 
-            and their scaled intervals.
-        """
-        import tskit
-        
-        trees = []
-        L = ts.sequence_length
-        intervals = []
+        snps = []
         
         for tree in ts.trees():
-            # Build a standalone TableCollection for the marginal tree
-            tables = tskit.TableCollection(sequence_length=L)
+            # Count the exact number of original SNPs falling in this physical interval
+            left, right = tree.interval
+            num_valid = int(np.sum((valid_positions >= left) & (valid_positions < right)))
+            snps.append(num_valid)
             
-            # Isolate samples and internal nodes
-            samples = list(tree.samples())
-            internal_nodes = [u for u in tree.nodes() if u not in samples]
+            tables = tskit.TableCollection(sequence_length=tree.span)
+            old_to_new = {}
             
-            # Rank internal nodes by their time (age)
+            samples = sorted(list(tree.samples())) # Prevent leaf-shuffling bug
+            for u in samples:
+                old_to_new[u] = tables.nodes.add_row(time=tree.time(u), flags=tskit.NODE_IS_SAMPLE)
+                
+            internal_nodes = [u for u in tree.nodes() if not tree.is_sample(u)]
             internal_nodes.sort(key=lambda u: tree.time(u))
             
-            node_map = {}
-            
-            # 1. Add samples first so they are strictly numbered 0 to n-1
-            for u in samples:
-                node_map[u] = tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=tree.time(u))
-                
-            # 2. Add internal nodes sequentially by rank
             for u in internal_nodes:
-                node_map[u] = tables.nodes.add_row(flags=0, time=tree.time(u))
+                old_to_new[u] = tables.nodes.add_row(time=tree.time(u))
                 
-            # 3. Reconstruct edges using the new ranked IDs
             for u in tree.nodes():
-                parent = tree.parent(u)
-                if parent != tskit.NULL:
+                for c in tree.children(u):
                     tables.edges.add_row(
-                        left=0, right=L,
-                        parent=node_map[parent], child=node_map[u]
+                        left=0, right=tree.span, 
+                        parent=old_to_new[u], child=old_to_new[c]
                     )
                     
             tables.sort()
+            new_ts = tables.tree_sequence()
+            trees.append(new_ts.first(sample_lists = True))
             
-            # Extract the independent, properly ranked tree
-            new_tree = tables.tree_sequence().first(sample_lists = True)
-            trees.append(new_tree)
-            
-            # Scale each tree's absolute boundaries to a 0-1 proportion
-            intervals.append((tree.interval[0] / L, tree.interval[1] / L))
-            
-        return cls(trees=trees, intervals=intervals)
-    
-    def simulate_sfs(self, mutation_rate: float, return_expected: bool = False) -> np.ndarray:
-        """
-        Simulates an unfolded Site Frequency Spectrum (SFS) for the tree sequence.
+        return cls(trees=trees, snps=snps)
 
-        This analytically calculates the expected number of mutations for each 
-        derived allele frequency based on absolute branch lengths and genomic span, 
-        and draws the simulated counts from a Poisson distribution.
+    def _iter_site_trees(self):
+        r"""
+        Generates the corresponding marginal tree for each individual SNP site.
+
+        This flattens the chunked tree representations into a continuous 
+        site-by-site generator, naturally handling comparisons between 
+        tree sequences with mismatched internal breakpoints.
+
+        Yields:
+            tskit.Tree: The marginal tree at the current SNP site.
+        """
+        for tree, num_snps in zip(self.trees, self.snps):
+            for _ in range(num_snps):
+                yield tree
+
+    def _check_compatibility(self, other: "PGTreeSequence"):
+        r"""
+        Ensures both sequences span the same total number of SNPs.
 
         Args:
-            mutation_rate (float): The mutation rate per base pair per generation.
-            return_expected (bool, optional): If True, returns the continuous 
-                expected SFS without applying stochastic Poisson sampling.
+            other (PGTreeSequence): The other tree sequence to compare against.
+
+        Raises:
+            ValueError: If the total number of SNPs differs between the two sequences.
+        """
+        if self.total_snps != other.total_snps:
+            raise ValueError("Both tree sequences must have the same total number of SNPs to compare.")
+
+    def rf_distance(self, other: "PGTreeSequence") -> np.ndarray:
+        r"""
+        Computes the Robinson-Foulds topological distance site-by-site.
+
+        Args:
+            other (PGTreeSequence): The tree sequence to compare against.
 
         Returns:
-            np.ndarray: A 1D array of size (n_samples + 1)
+            np.ndarray: A 1D float32 array of length `total_snps` containing 
+            the RF distance at each site.
         """
-        if not self.trees:
-            return np.array([])
-            
-        n_samples = self.trees[0].num_samples
-        expected_sfs = np.zeros(n_samples + 1)
+        self._check_compatibility(other)
+        distances = np.zeros(self.total_snps, dtype=np.float32)
         
-        for tree in self.trees:
-            # We use tskit's native tree.span here as the SFS calculation 
-            # requires absolute genome lengths to pair with the absolute mutation rate.
-            span = tree.span
-            if span == 0:
+        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
+            distances[i] = t1.rf_distance(t2)
+            
+        return distances.mean()
+
+    def kc_distance(self, other: "PGTreeSequence") -> np.ndarray:
+        r"""
+        Computes the Kendall-Colijn topological distance site-by-site.
+
+        Args:
+            other (PGTreeSequence): The tree sequence to compare against.
+
+        Returns:
+            np.ndarray: A 1D float32 array of length `total_snps` containing 
+            the KC distance at each site.
+        """
+        self._check_compatibility(other)
+        distances = np.zeros(self.total_snps, dtype=np.float32)
+        
+        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
+            distances[i] = t1.kc_distance(t2)
+            
+        return distances.mean()
+
+    def rms_log_coal_error(self, other: "PGTreeSequence") -> np.ndarray:
+        r"""
+        Computes the Root Mean Square (RMS) error of log coalescent times site-by-site.
+
+        For each site, this extracts the strictly positive node coalescent times 
+        from both trees, sorts them, aligns them up to the minimum length, and 
+        computes the RMS error of their log differences.
+
+        Args:
+            other (PGTreeSequence): The tree sequence to compare against.
+
+        Returns:
+            np.ndarray: A 1D float32 array of length `total_snps` containing 
+            the RMS log coalescent time error at each site.
+        """
+        self._check_compatibility(other)
+        errors = np.zeros(self.total_snps, dtype=np.float32)
+        
+        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
+            c1 = sorted([t1.time(u) for u in t1.nodes() if t1.time(u) > 0])
+            c2 = sorted([t2.time(u) for u in t2.nodes() if t2.time(u) > 0])
+            
+            min_len = min(len(c1), len(c2))
+            if min_len > 0:
+                log_c1 = np.log(c1[:min_len])
+                log_c2 = np.log(c2[:min_len])
+                
+                mse = np.mean((log_c1 - log_c2) ** 2)
+                errors[i] = np.sqrt(mse)
+            else:
+                errors[i] = 0.0
+                
+        return errors.mean()
+
+    def breakpoint_chamfer_distance(self, other: "PGTreeSequence") -> float:
+        r"""
+        Computes the symmetric Chamfer distance between the internal breakpoints 
+        of the two tree sequences.
+
+        A breakpoint is defined as the cumulative sum of SNPs at the boundary 
+        between two marginal trees. The symmetric Chamfer distance calculates the 
+        average distance from each breakpoint in Sequence 1 to its nearest neighbor 
+        in Sequence 2, plus the same from Sequence 2 to Sequence 1, divided by 2.
+
+        If a sequence has no internal breakpoints, the sequence boundaries 
+        (0 and total_snps) are used as fallback reference points.
+
+        Args:
+            other (PGTreeSequence): The tree sequence to compare against.
+
+        Returns:
+            float: The symmetric mean Chamfer distance in SNP units.
+        """
+        self._check_compatibility(other)
+        
+        # Calculate internal breakpoints (excluding the final boundary)
+        bp1 = np.cumsum(self.snps)[:-1]
+        bp2 = np.cumsum(other.snps)[:-1]
+        
+        if len(bp1) == 0 and len(bp2) == 0:
+            return 0.0
+            
+        # Fallback for sequences with no internal breakpoints:
+        # Distance to the nearest sequence boundary
+        if len(bp1) == 0:
+            bp1 = np.array([0, self.total_snps])
+        if len(bp2) == 0:
+            bp2 = np.array([0, self.total_snps])
+            
+        # Compute pairwise absolute differences using broadcasting
+        diffs = np.abs(bp1[:, np.newaxis] - bp2[np.newaxis, :])
+        
+        # Find the minimum distance from each breakpoint to the other set
+        min_bp1_to_bp2 = np.min(diffs, axis=1)
+        min_bp2_to_bp1 = np.min(diffs, axis=0)
+        
+        # Return symmetric mean Chamfer distance
+        return float((np.mean(min_bp1_to_bp2) + np.mean(min_bp2_to_bp1)) / 2.0)
+    
+    def symmetric_kl_divergence(self, other: "PGTreeSequence", epsilon: float = 1e-9) -> np.ndarray:
+        r"""
+        Computes the symmetric Kullback-Leibler (KL) divergence of implied site 
+        pattern distributions site-by-site.
+
+        Each branch defines a clade $c$. The probability of observing a mutation 
+        on that branch is modeled as $p(c) = \frac{l(c)}{\sum_{k} l(k)}$.
+        Additive smoothing ($\epsilon$) is applied to the union of all clades 
+        $C = C(T_1) \cup C(T_2)$ to avoid undefined logarithms, yielding smoothed 
+        distributions $P$ and $Q$.
+        
+        The metric returns:
+        $$D_{sKL}(T_1, T_2) = \frac{1}{2} \left( \sum_{c \in C} P(c) \log\left(\frac{P(c)}{Q(c)}\right) + \sum_{c \in C} Q(c) \log\left(\frac{Q(c)}{P(c)}\right) \right)$$
+
+        Args:
+            other (PGTreeSequence): The tree sequence to compare against.
+            epsilon (float): The small constant used for additive smoothing.
+
+        Returns:
+            np.ndarray: A 1D float32 array containing the symmetric KL divergence at each site.
+        """
+        self._check_compatibility(other)
+        divergences = np.zeros(self.total_snps, dtype=np.float32)
+
+        def get_clade_branch_lengths(tree: tskit.Tree) -> dict:
+            clades = {}
+            for u in tree.nodes():
+                # Ignore the root node itself as it doesn't have a branch above it
+                if tree.parent(u) != tskit.NULL:
+                    bl = tree.branch_length(u)
+                    if bl > 0:
+                        clade = frozenset(tree.samples(u))
+                        clades[clade] = bl
+            return clades
+
+        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
+            c1_lengths = get_clade_branch_lengths(t1)
+            c2_lengths = get_clade_branch_lengths(t2)
+            
+            sum1 = sum(c1_lengths.values())
+            sum2 = sum(c2_lengths.values())
+            
+            p1_init = {c: l / sum1 for c, l in c1_lengths.items()} if sum1 > 0 else {}
+            p2_init = {c: l / sum2 for c, l in c2_lengths.items()} if sum2 > 0 else {}
+            
+            all_clades = set(p1_init.keys()).union(set(p2_init.keys()))
+            
+            if not all_clades:
+                divergences[i] = 0.0
                 continue
                 
-            for u in tree.nodes():
-                parent = tree.parent(u)
-                
-                if parent != tskit.NULL:
-                    branch_length = max(tree.time(parent) - tree.time(u), 0.0)
-                    k = len(tree.samples(u))
-                    
-                    # Expected mutations: rate * branch_length * absolute genomic span
-                    expected_sfs[k] += mutation_rate * branch_length * span
-                    
-        if return_expected:
-            return expected_sfs
-        else:
-            return np.random.poisson(expected_sfs)
+            # Apply additive smoothing and construct arrays
+            P_smoothed = np.array([p1_init.get(c, 0.0) + epsilon for c in all_clades], dtype=np.float64)
+            Q_smoothed = np.array([p2_init.get(c, 0.0) + epsilon for c in all_clades], dtype=np.float64)
+            
+            # Re-normalize to sum to 1
+            P = P_smoothed / np.sum(P_smoothed)
+            Q = Q_smoothed / np.sum(Q_smoothed)
+            
+            # Compute symmetric KL divergence
+            kl_P_Q = np.sum(P * np.log(P / Q))
+            kl_Q_P = np.sum(Q * np.log(Q / P))
+            
+            divergences[i] = 0.5 * (kl_P_Q + kl_Q_P)
+            
+        return divergences.mean()

@@ -58,13 +58,13 @@ converter_script = str(importlib.resources.files('popgenml').joinpath('scripts',
 def singer(
     alignment: np.ndarray,
     positions: np.ndarray,
-    L: float,
     mutation_rate: float,
     recomb_rate: float,
+    L: float,
     output_prefix: str = None,
     n_est: float = None,
-    n_iters: int = 100,
-    thin: int = 20
+    n_iters: int = 1,
+    thin: int = 20,
 ) -> Iterator['PGTreeSequence']:
     """
     Runs the SINGER MCMC algorithm to infer Ancestral Recombination Graphs (ARGs) 
@@ -104,13 +104,6 @@ def singer(
             MCMC sample, with genomic intervals normalized to a 0.0 - 1.0 scale, and 
             sample lists initialized for topological distance calculations.
     """
-    import os
-    import glob
-    import tempfile
-    import subprocess
-    import logging
-    import tskit
-    import numpy as np
 
     # 1. Protect sequence boundaries without shifting internal duplicates
     if positions.max() <= 1.0:
@@ -153,6 +146,7 @@ def singer(
         ]
         
         try:
+            
             subprocess.run(singer_command, check=True, capture_output=True)
             
             node_pattern = f"{run_prefix}_nodes_*.txt"
@@ -172,12 +166,14 @@ def singer(
             
             subprocess.run(converter_command, check=True, capture_output=True)
             
+            # ... inside your singer() function ...
             tree_pattern = f"{run_prefix}*.trees"
             infer_files = sorted(glob.glob(tree_pattern))
             
             for infer_file in infer_files:
                 ts = tskit.load(infer_file)
-                yield PGTreeSequence.from_tskit(ts)
+                # Pass the exact physical positions used to generate the VCF
+                yield PGTreeSequence.from_tskit(ts, positions=positions)
                 
         except subprocess.CalledProcessError as e:
             error_output = e.stderr.decode('utf-8').strip() if e.stderr else str(e)
