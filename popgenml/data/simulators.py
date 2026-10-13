@@ -591,18 +591,28 @@ class MSPrimeSimulator(BaseSimulator):
 
 class SLiMSimulator(MSPrimeSimulator):
     r"""
-    A neutral forward-time simulator utilizing SLiM.
-    Generates tree sequences that are compatible with the msprime mutation pipeline.
+    A forward-time simulator utilizing SLiM.
+    Acts as a fast, neutral coalescent simulator by default, but can be triggered 
+    to model explicit Background Selection (BGS) via the [slim] config block.
+    
+    Currently experimental. todo:
+        - support multi-population with time-varying migration (+tests)
+        - support selective sweeps (+test with discoal)
+        - verify consistency with seeds etc. / other routines
     """
     def __init__(self, config_file: str, mutation_model=msprime.BinaryMutationModel()):
         super().__init__(config_file)
         self.mutation_model = mutation_model
+        
+        # Load slim specific priors
+        try:
+            priors = create_prior_from_config(self.config_path)
+            self.slim_priors = priors.get('slim', {})
+        except Exception:
+            self.slim_priors = {}
 
     def _get_demography_events(self):
-        """
-        Parses the config samples to generate a chronological list of size changes.
-        Returns a list of tuples: (time_ago, size) sorted from oldest to most recent.
-        """
+        """Parses demography priors into a chronological list of sizes."""
         pop_name = list(self.samples.keys())[0]
         sample_conf = self.samples[pop_name]
 
@@ -638,30 +648,49 @@ class SLiMSimulator(MSPrimeSimulator):
         else:
             raise ValueError("All simulated populations must have a key 'Nt' or 'N0'")
 
-        # Sort by time ago descending (oldest first)
-        t_events = sorted(t_events, key=lambda x: x[0], reverse=True)
-        return t_events
+        return sorted(t_events, key=lambda x: x[0], reverse=True)
 
     def write_slim_script(self, out_path: str, seed: int) -> str:
         """
-        Dynamically builds a SLiM recipe configured for neutral demography.
-        Mutations are NOT simulated in SLiM; they are overlaid later via msprime.
+        Dynamically builds a SLiM recipe.
+        Toggles between fast neutral simulation and explicit BGS depending on config.
         """
+        enable_bgs = self.slim_priors.get('enable_bgs', False)
+        
         t_events = self._get_demography_events()
         t_max = t_events[0][0]
         N_oldest = t_events[0][1]
         
-        # Because we recapitate entirely using msprime and have no selection, 
-        # SLiM only needs to run for the duration of the demographic events, 
-        # plus a bare minimum of 1 generation. No massive burn-in needed!
-        T_end = max(1, int(t_max))
+        if enable_bgs:
+            # --- BGS ENABLED ---
+            # Needs sufficient burn-in to reach mutation-selection balance
+            burn_in_factor = self.slim_priors.get('burnin_factor', 10)
+            burn_in = int(burn_in_factor * N_oldest)
+            
+            sh = self.slim_priors.get('dfe_shape', 0.186)
+            mu_s = self.slim_priors.get('dfe_mean', -0.013)
+            h = self.slim_priors.get('dominance', 0.5)
+            
+            # Use specific deleterious rate if provided, otherwise default to neutral rate
+            U_del = self.slim_priors.get('U_del', self.params['mu'])
+            
+            mut_rate_str = f"initializeMutationRate({U_del});"
+            mut_type_str = f"initializeMutationType(\"m1\", {h}, \"g\", {mu_s}, {sh});"
+        else:
+            # --- PURE NEUTRAL ---
+            # No burn-in needed (recapitation handles it), no mutations (msprime handles it)
+            burn_in = 0
+            mut_rate_str = "initializeMutationRate(0.0);"
+            mut_type_str = "initializeMutationType(\"m1\", 0.5, \"f\", 0.0);"
+            
+        T_end = burn_in + max(1, int(t_max))
 
         script_lines = [
             "initialize() {",
             "    initializeTreeSeq();",
-            "    initializeMutationRate(0.0);", 
+            f"    {mut_rate_str}",
             f"    initializeRecombinationRate({self.params['r']});",
-            "    initializeMutationType(\"m1\", 0.5, \"f\", 0.0);",
+            f"    {mut_type_str}",
             "    initializeGenomicElementType(\"g1\", m1, 1.0);",
             f"    initializeGenomicElement(g1, 0, {int(self.L) - 1});",
             "}",
@@ -722,10 +751,8 @@ class SLiMSimulator(MSPrimeSimulator):
         t_events = self._get_demography_events()
         N_oldest = t_events[0][1]
         
-        # Suppress the TimeUnitsMismatchWarning as ticks == generations here
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', msprime.TimeUnitsMismatchWarning)
-            # Recapitate the full population (msprime is extremely fast at this)
             ts = pyslim.recapitate(
                 ts, 
                 recombination_rate=self.params['r'], 
@@ -740,17 +767,16 @@ class SLiMSimulator(MSPrimeSimulator):
         alive_inds = pyslim.individuals_alive_at(ts, 0)
         rng = np.random.default_rng(seeds[0] if seeds[0] else 42)
         
-        # Pick exactly n_samples random diploid individuals from the population
         keep_inds = rng.choice(alive_inds, n_samples, replace=False)
         
         keep_nodes = []
         for ind in keep_inds:
             keep_nodes.extend(ts.individual(ind).nodes)
             
-        # Simplify the fully recapitated tree down to just our 4 samples
         ts = ts.simplify(keep_nodes)
             
-        # Overlay neutral mutations
+        # Overlay neutral mutations (Note: msprime will remove the deleterious 
+        # mutations from the final tree by default unless keep=True is set internally)
         ret = self.mutate_and_return_(ts, seed=seeds[1])
         ret['r'] = self.params['r']
         

@@ -318,71 +318,82 @@ def read_anc_to_tskit_trees(anc_file, total_snps):
     if not tree_blocks:
         return [], []
 
-    # 1. Define bounds using the EXACT total number of SNPs
-    seq_len = float(total_snps) 
-    
-    # 2. Identify samples (tips)
-    children = set()
-    parents = set()
+    # 1. Identify global samples (nodes that only ever appear as children)
+    global_children = set()
+    global_parents = set()
     for block in tree_blocks:
         for p, c in block['edges']:
-            children.add(c)
-            parents.add(p)
+            global_children.add(c)
+            global_parents.add(p)
             
-    samples = children - parents
-    
-    if not children and not parents:
-        max_node_id = 0
-    else:
-        max_node_id = max(max(children), max(parents))
+    global_samples = sorted(list(global_children - global_parents))
+    N_samples = len(global_samples) if global_samples else 0
 
-    # 3. Resolve consistent node times (tskit enforces: parent_time > child_time)
-    node_times = {n: 0.0 for n in samples}
-    for _ in range(max_node_id + 1):  
-        changed = False
-        for block in tree_blocks:
+    # 2. Build a global table collection to guarantee contiguous interval tracking
+    tables = tskit.TableCollection(sequence_length=float(total_snps))
+    
+    # Samples are reused across all blocks (0 to N_samples - 1)
+    for i in range(N_samples):
+        tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0.0)
+
+    # 3. Add edges block by block, isolating internal nodes to prevent time leaking
+    for i, block in enumerate(tree_blocks):
+        left_snp = float(block['start_snp'])
+        if i < len(tree_blocks) - 1:
+            right_snp = float(tree_blocks[i + 1]['start_snp'])
+        else:
+            right_snp = float(total_snps)
+            
+        if left_snp >= right_snp:
+            continue
+            
+        all_nodes = set(c for p, c in block['edges']) | set(p for p, c in block['edges'])
+        if not all_nodes:
+            continue
+            
+        max_node_id = max(all_nodes)
+        
+        # Calculate branch times LOCALLY for this tree block
+        node_times = {n: 0.0 for n in range(N_samples)}
+        for _ in range(max_node_id + 1):
+            changed = False
             for p, c in block['edges']:
                 if c in node_times:
                     t = node_times[c] + max(block['lengths'].get(c, 0.0), 1e-6)
                     if p not in node_times or node_times[p] < t:
                         node_times[p] = t
                         changed = True
-        if not changed:
-            break
-
-    # 4. Build the tskit TableCollection using exact SNP coordinates
-    tables = tskit.TableCollection(sequence_length=seq_len)
-
-    for i in range(max_node_id + 1):
-        if i in samples:
-            tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=node_times.get(i, 0.0))
-        else:
-            tables.nodes.add_row(flags=0, time=node_times.get(i, 0.0))
-
-    # 5. Populate edges using exact integer SNP boundaries
-    for i, block in enumerate(tree_blocks):
-        left = float(block['start_snp'])
+            if not changed:
+                break
+                
+        # Generate new globally unique internal nodes for THIS block only
+        local_node_map = {n: n for n in range(N_samples)}
         
-        if i < len(tree_blocks) - 1:
-            right = float(tree_blocks[i + 1]['start_snp'])
-        else:
-            right = seq_len # The last block extends to the total number of SNPs
-            
+        for n_id in sorted(list(all_nodes)):
+            if n_id >= N_samples:
+                t = node_times.get(n_id, 0.0)
+                global_id = tables.nodes.add_row(flags=0, time=t)
+                local_node_map[n_id] = global_id
+                
+        # Register the edges into the global timeline
         for p, c in block['edges']:
-            tables.edges.add_row(left=left, right=right, parent=p, child=c)
+            global_p = local_node_map[p]
+            global_c = local_node_map[c]
+            tables.edges.add_row(left=left_snp, right=right_snp, parent=global_p, child=global_c)
 
-    # Sort and finalize tree sequence
     tables.sort()
     ts = tables.tree_sequence()
-
-    # 6. Yield Tree objects and exact SNP counts
+    
     out_trees = []
     out_snps = []
     
+    # 4. Extract standardized trees. Because we use ts.trees(), 
+    # the sum of (right - left) is mathematically guaranteed to equal total_snps.
     for tree in ts.trees():
+        num_snps = int(round(tree.interval.right - tree.interval.left))
+        
         local_tables = tskit.TableCollection(sequence_length=1.0)
         
-        # Find strictly the nodes connected to the samples in THIS interval
         samples_list = sorted(list(tree.samples()))
         active_nodes = set(samples_list)
         for u in samples_list:
@@ -395,16 +406,12 @@ def read_anc_to_tskit_trees(anc_file, total_snps):
         internal_nodes.sort(key=lambda u: tree.time(u))
         
         node_map = {}
-        
-        # 1. Map samples strictly to 0...n-1 so they match the simulated tree
         for u in samples_list:
             node_map[u] = local_tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=tree.time(u))
             
-        # 2. Add connected internal nodes
         for u in internal_nodes:
             node_map[u] = local_tables.nodes.add_row(flags=0, time=tree.time(u))
             
-        # 3. Add edges
         for u in active_nodes:
             parent = tree.parent(u)
             if parent != tskit.NULL and parent in active_nodes:
@@ -417,12 +424,11 @@ def read_anc_to_tskit_trees(anc_file, total_snps):
         clean_ts = local_tables.tree_sequence()
         clean_tree = clean_ts.first(sample_lists=True)
         
-        # 4. Handle Relate uncoalesced lineages
+        # Handle Relate uncoalesced roots
         if clean_tree.num_roots > 1:
             dummy_tables = clean_ts.dump_tables()
             roots = clean_tree.roots
             
-            # Place dummy root older than all existing roots
             max_time = max([clean_tree.time(r) for r in roots])
             dummy_root = dummy_tables.nodes.add_row(flags=0, time=max_time + 1.0)
             
@@ -431,15 +437,10 @@ def read_anc_to_tskit_trees(anc_file, total_snps):
                 
             dummy_tables.sort()
             clean_tree = dummy_tables.tree_sequence().first(sample_lists=True)
-
-        # Because we used exact integer boundaries (as floats), 
-        # (right - left) perfectly equals the number of SNPs in this tree.
-        # This also safely handles the case where tskit merges adjacent identical blocks.
-        num_snps = int(tree.interval.right - tree.interval.left)
-        
+            
         out_trees.append(clean_tree)
         out_snps.append(num_snps)
-                
+        
     return out_trees, out_snps
 
 # Example usage:
