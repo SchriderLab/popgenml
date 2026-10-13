@@ -383,7 +383,7 @@ def read_anc_to_tskit_trees(anc_file, total_snps):
         local_tables = tskit.TableCollection(sequence_length=1.0)
         
         # Find strictly the nodes connected to the samples in THIS interval
-        samples_list = list(tree.samples())
+        samples_list = sorted(list(tree.samples()))
         active_nodes = set(samples_list)
         for u in samples_list:
             curr = u
@@ -420,7 +420,7 @@ def read_anc_to_tskit_trees(anc_file, total_snps):
         # 4. Handle Relate uncoalesced lineages
         if clean_tree.num_roots > 1:
             dummy_tables = clean_ts.dump_tables()
-            roots = [u for u in clean_tree.nodes() if clean_tree.parent(u) == tskit.NULL]
+            roots = clean_tree.roots
             
             # Place dummy root older than all existing roots
             max_time = max([clean_tree.time(r) for r in roots])

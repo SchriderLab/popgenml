@@ -18,6 +18,8 @@ import ast
 import shlex
 import sys
 import tskit
+import pyslim
+import warnings
 
 # scipy.stats._distn_infrastructure.rv_continuous and rv_discrete are the base classes
 # for continuous and discrete distributions, respectively.
@@ -586,83 +588,172 @@ class MSPrimeSimulator(BaseSimulator):
         result['mu'] = mu
 
         return result
-    
-import pyslim
 
-class SLiMSimulator(BaseSimulator):
+class SLiMSimulator(MSPrimeSimulator):
     r"""
-    A forward-time simulator utilizing SLiM to model explicit background selection.
+    A neutral forward-time simulator utilizing SLiM.
     Generates tree sequences that are compatible with the msprime mutation pipeline.
     """
-    def __init__(self, config_file: str):
+    def __init__(self, config_file: str, mutation_model=msprime.BinaryMutationModel()):
         super().__init__(config_file)
-        # Store SLiM specific priors (e.g., DFE parameters)
-        priors = create_prior_from_config(self.config_path)
-        self.slim_priors = priors.get('slim', {})
+        self.mutation_model = mutation_model
+
+    def _get_demography_events(self):
+        """
+        Parses the config samples to generate a chronological list of size changes.
+        Returns a list of tuples: (time_ago, size) sorted from oldest to most recent.
+        """
+        pop_name = list(self.samples.keys())[0]
+        sample_conf = self.samples[pop_name]
+
+        t_events = []
         
+        if 'N0' in sample_conf and 'Nt' not in sample_conf:
+            N0 = sample_conf['N0']
+            if not isinstance(N0, (float, int)):
+                seed_ = self.seeds.get('N0') if self.seeds else None
+                N0 = N0.rvs(size=1, random_state=seed_)[0]
+            t_events.append((0, N0))
+            self.params['N0'] = N0
+            
+        elif 'Nt' in sample_conf:
+            Nt = sample_conf['Nt']
+            if isinstance(Nt, list):
+                for item in Nt:
+                    if isinstance(item, tuple) and len(item) == 2:
+                        N_, t_ = item
+                        t_events.append((t_, N_))
+                    else:
+                        t_events.append((0, item))
+            elif isinstance(Nt, (int, float)):
+                t_events.append((0, Nt))
+            else:
+                seed_ = self.seeds.get('Nt') if self.seeds else None
+                t_arr, N_arr = Nt.sample_curve(seed_)
+                
+                for t_, N_ in zip(t_arr, N_arr):
+                    t_events.append((t_, N_))
+                
+                self.params['Nt'] = (N_arr, t_arr)
+        else:
+            raise ValueError("All simulated populations must have a key 'Nt' or 'N0'")
+
+        # Sort by time ago descending (oldest first)
+        t_events = sorted(t_events, key=lambda x: x[0], reverse=True)
+        return t_events
+
     def write_slim_script(self, out_path: str, seed: int) -> str:
         """
-        Dynamically builds a SLiM recipe configured for Background Selection (BGS).
+        Dynamically builds a SLiM recipe configured for neutral demography.
+        Mutations are NOT simulated in SLiM; they are overlaid later via msprime.
         """
-        # Extract BGS parameters with defaults
-        sh = self.slim_priors.get('dfe_shape', 0.186)
-        mu_s = self.slim_priors.get('dfe_mean', -0.013)
-        h = self.slim_priors.get('dominance', 0.5)
+        t_events = self._get_demography_events()
+        t_max = t_events[0][0]
+        N_oldest = t_events[0][1]
         
-        # We assume a single population with fixed N0 for this basic BGS template
-        pop_name = list(self.samples.keys())[0]
-        N0 = self.samples[pop_name].get('N0', 1000)
+        # Because we recapitate entirely using msprime and have no selection, 
+        # SLiM only needs to run for the duration of the demographic events, 
+        # plus a bare minimum of 1 generation. No massive burn-in needed!
+        T_end = max(1, int(t_max))
+
+        script_lines = [
+            "initialize() {",
+            "    initializeTreeSeq();",
+            "    initializeMutationRate(0.0);", 
+            f"    initializeRecombinationRate({self.params['r']});",
+            "    initializeMutationType(\"m1\", 0.5, \"f\", 0.0);",
+            "    initializeGenomicElementType(\"g1\", m1, 1.0);",
+            f"    initializeGenomicElement(g1, 0, {int(self.L) - 1});",
+            "}",
+            "",
+            "1 early() {",
+            f"    sim.addSubpop(\"p1\", {int(N_oldest)});",
+            "}"
+        ]
         
-        script = f"""
-        initialize() {{
-            initializeTreeSeq();
-            initializeMutationRate({self.mu});
-            initializeRecombinationRate({self.r});
-            
-            // m1 mutation type: deleterious, gamma DFE for BGS
-            initializeMutationType("m1", {h}, "g", {mu_s}, {sh});
-            
-            // g1 genomic element covers the entire sequence L
-            initializeGenomicElementType("g1", m1, 1.0);
-            initializeGenomicElement(g1, 0, {self.L - 1});
-        }}
+        for t_ago, N_size in t_events:
+            gen = T_end - int(t_ago)
+            if gen > 1:
+                script_lines.extend([
+                    "",
+                    f"{gen} early() {{",
+                    f"    p1.setSubpopulationSize({int(N_size)});",
+                    "}"
+                ])
         
-        1 early() {{
-            sim.addSubpop("p1", {N0});
-        }}
+        script_lines.extend([
+            "",
+            f"{T_end} late() {{",
+            f"    sim.treeSeqOutput(\"{out_path}\");",
+            "    sim.simulationFinished();",
+            "}"
+        ])
         
-        // Run for 10 * N0 generations to ensure mutation-selection balance
-        {int(10 * N0)} late() {{
-            sim.treeSeqOutput("{out_path}");
-            sim.simulationFinished();
-        }}
-        """
-        return script
+        return "\n".join(script_lines)
         
     def simulate(self, verbose: bool = False, seeds: tuple = (None, None)) -> dict:
         self.params = {}
         
-        # 1. Create a temporary file to hold the SLiM output
+        if isinstance(self.r, float):
+            self.params['r'] = self.r
+        else:
+            self.params['r'] = self.r.rvs(size=1)[0]
+            
+        if isinstance(self.mu, float):
+            self.params['mu'] = self.mu
+        else:
+            seed_ = self.seeds.get('mu') if self.seeds else None
+            self.params['mu'] = self.mu.rvs(size=1, random_state=seed_)[0]
+        
         with tempfile.TemporaryDirectory() as tmpdir:
             out_trees = os.path.join(tmpdir, "out.trees")
             script_path = os.path.join(tmpdir, "recipe.slim")
             
-            # 2. Write the dynamic SLiM script
             script_content = self.write_slim_script(out_trees, seeds[0])
             with open(script_path, "w") as f:
                 f.write(script_content)
                 
-            # 3. Execute SLiM via subprocess
             cmd = ["slim", "-s", str(seeds[0] if seeds[0] else 42), script_path]
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL if not verbose else None)
             
-            # 4. Load the resulting tree sequence using tskit
             ts = tskit.load(out_trees)
             
-        # 5. Overlay neutral mutations using msprime (if desired) and format output
-        # Assuming you have a mutate_and_return_ method inherited or defined similar to MSPrimeSimulator
+        # --- Coalescent Recapitation FIRST ---
+        t_events = self._get_demography_events()
+        N_oldest = t_events[0][1]
+        
+        # Suppress the TimeUnitsMismatchWarning as ticks == generations here
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', msprime.TimeUnitsMismatchWarning)
+            # Recapitate the full population (msprime is extremely fast at this)
+            ts = pyslim.recapitate(
+                ts, 
+                recombination_rate=self.params['r'], 
+                ancestral_Ne=int(N_oldest), 
+                random_seed=seeds[0] if seeds[0] else 42
+            )
+
+        # --- Subsample SECOND ---
+        pop_name = list(self.samples.keys())[0]
+        n_samples = self.samples[pop_name]['n']
+        
+        alive_inds = pyslim.individuals_alive_at(ts, 0)
+        rng = np.random.default_rng(seeds[0] if seeds[0] else 42)
+        
+        # Pick exactly n_samples random diploid individuals from the population
+        keep_inds = rng.choice(alive_inds, n_samples, replace=False)
+        
+        keep_nodes = []
+        for ind in keep_inds:
+            keep_nodes.extend(ts.individual(ind).nodes)
+            
+        # Simplify the fully recapitated tree down to just our 4 samples
+        ts = ts.simplify(keep_nodes)
+            
+        # Overlay neutral mutations
         ret = self.mutate_and_return_(ts, seed=seeds[1])
-        ret['r'] = self.r
+        ret['r'] = self.params['r']
+        
         return ret
 
 class DiscoalSimulator(BaseSimulator):
