@@ -10,3 +10,4 @@ pyslim
 zstandard
 pandas
 biopython
+lmdb

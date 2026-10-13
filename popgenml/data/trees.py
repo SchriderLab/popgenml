@@ -108,7 +108,30 @@ class PGTreeSequence:
         samples_to_keep: Optional[List[int]] = None,
         positions: Optional[np.ndarray] = None 
     ) -> "PGTreeSequence":
-        
+        r"""
+        Constructs a PGTreeSequence instance from an existing tskit TreeSequence.
+
+        Iterates through the local trees, counting valid SNPs within each tree's 
+        genomic interval `[left, right)`, and extracts each local tree into an 
+        isolated topology.
+
+        Parameters
+        ----------
+        ts : tskit.TreeSequence
+            The input tree sequence to parse.
+        samples_to_keep : list of int, optional
+            A list of sample node IDs to retain. If provided, the tree sequence is 
+            simplified down to these samples before processing.
+        positions : np.ndarray, optional
+            An array of valid physical positions to count as SNPs. Must be 0-based 
+            to correctly match tskit's half-open intervals. If None, valid positions 
+            are inferred from segregating sites in the genotype matrix.
+
+        Returns
+        -------
+        PGTreeSequence
+            An instance containing the extracted trees and their SNP counts.
+        """
         if samples_to_keep is not None:
             ts = ts.simplify(samples=samples_to_keep)
             
@@ -133,7 +156,7 @@ class PGTreeSequence:
         for tree in ts.trees():
             # Count the exact number of original SNPs falling in this physical interval
             left, right = tree.interval
-            num_valid = int(np.sum((valid_positions >= left) & (valid_positions < right)))
+            num_valid = int(np.sum((valid_positions > left) & (valid_positions <= right)))
             snps.append(num_valid)
             
             tables = tskit.TableCollection(sequence_length=tree.span)

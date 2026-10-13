@@ -139,7 +139,7 @@ def _parse_prior_value(value_str: str, safe_globals: dict) -> Any:
                 raise ValueError(f"Could not parse value: '{value_str}'. Error: {e}")
 
 def create_prior_from_config(config_source: str) -> Dict[str, Dict[str, Any]]:
-    """
+    r"""
     Creates a nested dictionary of priors from a Python config file or raw INI string.
 
     Args:

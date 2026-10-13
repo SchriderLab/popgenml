@@ -142,20 +142,22 @@ pop1 = {'N0': 10000, 'n': 2}
     
     N = 10000
     
-    ts_est = relate(ret['x'], ret['pos'], ret['x'].shape[0], mu, r, 1e6, N, verbose = True)
+    ts_est = relate(ret['x'], ret['pos'], ret['x'].shape[0], mu, r, 1e6, N, verbose = True, odir = 'test_relate')
     ts = PGTreeSequence.from_tskit(ret['ts'])
+    
+    print(sum(ts_est.snps), sum(ts.snps))
     
     print('[inference: relate] SUCCESS!')
 
     print('Running [ts comparisons: relate]')
     
-    err = ts_est.average_kc_distance(ts)
+    err = ts_est.kc_distance(ts)
     print('kc err = {}'.format(err))
     
-    err = ts_est.average_rf_distance(ts)
+    err = ts_est.rf_distance(ts)
     print('rf err = {}'.format(err))
         
-    err = ts_est.average_rms_log_coal_time(ts)
+    err = ts_est.rms_log_coal_error(ts)
     print('rms log coal err = {}'.format(err))
         
     err = ts_est.breakpoint_chamfer_distance(ts)
@@ -180,23 +182,26 @@ pop1 = {'N0': 10000, 'n': 2}
     
     mu = simulator.mu
     r = simulator.r
+    L = 1e6
     
     N = 10000
     
-    ts_est = next(singer(ret['x'], ret['pos'], 1e6, mu, r, None, n_est=N))
+    ts_est = next(singer(ret['x'], ret['pos'], mu, r, L))
     ts = PGTreeSequence.from_tskit(ret['ts'])
+    
+    print(sum(ts.snps), sum(ts_est.snps))
     
     print('[inference: singer] SUCCESS!')
 
     print('Running [ts comparisons: singer]')
     
-    err = ts_est.average_kc_distance(ts)
+    err = ts_est.kc_distance(ts)
     print('kc err = {}'.format(err))
     
-    err = ts_est.average_rf_distance(ts)
+    err = ts_est.rf_distance(ts)
     print('rf err = {}'.format(err))
         
-    err = ts_est.average_rms_log_coal_time(ts)
+    err = ts_est.rms_log_coal_error(ts)
     print('rms log coal err = {}'.format(err))
         
     err = ts_est.breakpoint_chamfer_distance(ts)
