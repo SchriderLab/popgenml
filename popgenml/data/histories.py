@@ -101,7 +101,7 @@ class TargetedHistory:
         self.expected_A_func = precompute_kingman_lineages(n_haps)
         
 
-    def sample_curve(self, seed: int | None = None):
+    def sample_curve(self, seed: Optional[int] = None):
         np.random.seed(seed)
         
         ret = self.sample_curve_()

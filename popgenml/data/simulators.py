@@ -229,7 +229,7 @@ class BaseSimulator:
     or discoal), handling the boilerplate of parsing demographics, sample sizes, and 
     mutation/recombination rates.
     """
-    def __init__(self, config_source: str, seeds: dict | None = None):
+    def __init__(self, config_source: str, seeds: Optional[dict] = None):
         r"""
         Initializes the BaseSimulator from a configuration file or INI string.
 
@@ -310,7 +310,7 @@ class BaseSimulator:
         # to store parameter values from make_demography:
         self.params = {}
 
-    def set_seeds(self, seeds: dict | None):
+    def set_seeds(self, seeds: Optional[dict] = None):
         r"""
         Sets the random seeds for the simulator.
 
