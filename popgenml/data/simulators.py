@@ -9,7 +9,7 @@ import subprocess
 import re
 
 from scipy import stats
-from typing import Dict, Union, Any
+from typing import Dict, Union, Any, Optional
 from scipy.interpolate import interp1d
 import configparser
 import math
@@ -18,6 +18,7 @@ import ast
 import shlex
 import sys
 import tskit
+
 # scipy.stats._distn_infrastructure.rv_continuous and rv_discrete are the base classes
 # for continuous and discrete distributions, respectively.
 # We use this for type hinting to make the code clearer.

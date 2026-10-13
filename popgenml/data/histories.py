@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from typing import Optional
 
 import numpy as np
 from scipy.integrate import cumulative_trapezoid, solve_ivp, simpson
