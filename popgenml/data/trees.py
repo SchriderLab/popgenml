@@ -161,6 +161,74 @@ class PGTreeSequence:
             trees.append(new_ts.first(sample_lists = True))
             
         return cls(trees=trees, snps=snps)
+    
+    def save(self, filepath: str) -> None:
+        r"""
+        Saves the PGTreeSequence to a concise, compressed disk format (.npz).
+        
+        Serializes the marginal trees into high-precision Newick strings to preserve 
+        coalescent times and topologies, and stores the SNP counts as a native array.
+
+        Args:
+            filepath (str): The destination path (e.g., 'model_output.npz').
+        """
+        # precision=14 prevents floating-point truncation of coalescent times
+        newicks = np.array([tree.newick(precision=14) for tree in self.trees], dtype=str)
+        snps_array = np.array(self.snps, dtype=np.int32)
+        
+        np.savez_compressed(filepath, newicks=newicks, snps=snps_array)
+
+    @classmethod
+    def load(cls, filepath: str) -> "PGTreeSequence":
+        r"""
+        Loads a PGTreeSequence from a compressed .npz archive.
+        
+        Reads the high-precision Newick strings, converts them back to tskit.Tree 
+        objects, and strictly re-standardizes the node IDs (leaves 0 to n-1, 
+        internal nodes ascending by time) to guarantee metric compatibility.
+
+        Args:
+            filepath (str): The path to the saved .npz file.
+
+        Returns:
+            PGTreeSequence: The restored tree sequence object.
+        """
+        data = np.load(filepath)
+        snps = data['snps'].tolist()
+        newicks = data['newicks']
+        
+        trees = []
+        
+        for nw_str in newicks:
+            # Parse Newick back into a temporary tskit tree
+            raw_tree = tskit.load_newick(nw_str).first()
+            
+            # Re-standardize the parsed tree to strictly match the PGTreeSequence layout
+            tables = tskit.TableCollection(sequence_length=1.0)
+            old_to_new = {}
+            
+            samples = sorted(list(raw_tree.samples()))
+            for u in samples:
+                old_to_new[u] = tables.nodes.add_row(time=raw_tree.time(u), flags=tskit.NODE_IS_SAMPLE)
+                
+            internal_nodes = [u for u in raw_tree.nodes() if not raw_tree.is_sample(u)]
+            internal_nodes.sort(key=lambda u: raw_tree.time(u))
+            
+            for u in internal_nodes:
+                old_to_new[u] = tables.nodes.add_row(time=raw_tree.time(u))
+                
+            for u in raw_tree.nodes():
+                for child in raw_tree.children(u):
+                    tables.edges.add_row(
+                        left=0.0, right=1.0, 
+                        parent=old_to_new[u], child=old_to_new[child]
+                    )
+                    
+            tables.sort()
+            clean_ts = tables.tree_sequence()
+            trees.append(clean_ts.first(sample_lists=True))
+            
+        return cls(trees=trees, snps=snps)
 
     def _iter_site_trees(self):
         r"""

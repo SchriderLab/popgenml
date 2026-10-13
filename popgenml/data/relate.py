@@ -263,7 +263,7 @@ def read_anc(anc_file, pop_sizes = (40,0)):
 import tskit
 
 def read_anc_to_tskit_trees(anc_file, total_snps):
-    """
+    r"""
     Parses a Relate .anc file into a list of standardized tskit trees and SNP counts.
     
     Args:
@@ -452,7 +452,7 @@ def harmonic_number(n):
     return np.sum(np.array(range(1, n), dtype = np.float32) ** -1)
 
 def get_haps_positions(filename):
-    """
+    r"""
     Parses a .haps file and returns a list of SNP positions.
     Assumes standard Oxford format: 
     CHR ID POS REF ALT G1 G2 ...

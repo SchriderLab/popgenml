@@ -66,7 +66,7 @@ def singer(
     n_iters: int = 1,
     thin: int = 20,
 ) -> Iterator['PGTreeSequence']:
-    """
+    r"""
     Runs the SINGER MCMC algorithm to infer Ancestral Recombination Graphs (ARGs) 
     from genetic alignment data, yielding the sampled topologies as tree sequences.
 
