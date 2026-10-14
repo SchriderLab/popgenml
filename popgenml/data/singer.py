@@ -12,6 +12,7 @@ from .io_ import write_vcf
 from .functions import harmonic_number
 import importlib.resources
 from .trees import PGTreeSequence
+import sys
 
 
 def write_vcf(alignment: np.ndarray, positions: np.ndarray, L: float, vcf_path: str) -> None:
@@ -157,7 +158,7 @@ def singer(
                 return
             
             converter_command = [
-                "python3", converter_script, 
+                sys.executable, converter_script, 
                 "-input", run_prefix,
                 "-output", run_prefix,
                 "-start", "0",
