@@ -77,6 +77,7 @@ def extract_standardized_trees(
 import io
 from dataclasses import dataclass, InitVar
 from typing import Iterable, List, Iterator
+import pickle
 
 @dataclass
 class PGTreeSequence:
@@ -85,8 +86,6 @@ class PGTreeSequence:
     Accepts standard trees on instantiation but compresses them internally 
     into native bytes to prevent OOM errors while preserving all node metadata.
     """
-    # InitVar ensures 'trees' is accepted in __init__ but NOT kept on the object,
-    # allowing the garbage collector to free the heavy C-bindings.
     trees: InitVar[Iterable[tskit.Tree]]
     snps: List[int]
 
@@ -94,11 +93,10 @@ class PGTreeSequence:
         self.total_snps = sum(self.snps)
         self._tree_bytes = []
         
-        # Compress each tree sequence into raw bytes immediately.
+        # Compress each tree sequence into raw bytes using pickle.
+        # This bypasses the C-level fileno requirement and safely stores it in RAM.
         for t in trees:
-            buf = io.BytesIO()
-            t.tree_sequence.dump(buf)
-            self._tree_bytes.append(buf.getvalue())
+            self._tree_bytes.append(pickle.dumps(t.tree_sequence))
             
         if len(self._tree_bytes) != len(self.snps):
             raise ValueError("Length of 'trees' and 'snps' must be identical.")
@@ -111,7 +109,9 @@ class PGTreeSequence:
         positions: Optional[np.ndarray] = None 
     ) -> "PGTreeSequence":
         
-        # ... [Keep your exact positions/filter logic here] ...
+        if samples_to_keep is not None:
+            ts = ts.simplify(samples=samples_to_keep)
+
         if positions is not None:
             valid_positions = np.array(positions)
         elif ts.num_sites > 0:
@@ -126,8 +126,6 @@ class PGTreeSequence:
             left, right = tree.interval
             snps.append(int(np.sum((valid_positions > left) & (valid_positions <= right))))
             
-        # GENERATOR TWEAK: Instead of building a massive list in memory before 
-        # instantiation, yield the trees lazily into the constructor.
         def generate_standardized_trees():
             for tree in ts.trees():
                 tables = tskit.TableCollection(sequence_length=tree.span)
@@ -156,18 +154,17 @@ class PGTreeSequence:
         return cls(trees=generate_standardized_trees(), snps=snps)
 
     def _iter_site_trees(self) -> Iterator[tskit.Tree]:
-        """Lazily reloads the tskit struct from bytes only when iterating."""
+        """Lazily reloads the tskit struct from pickled bytes only when iterating."""
         for t_bytes, num_snps in zip(self._tree_bytes, self.snps):
             if num_snps > 0:
-                ts_reloaded = tskit.load(io.BytesIO(t_bytes))
+                ts_reloaded = pickle.loads(t_bytes)
                 tree = ts_reloaded.first()
                 for _ in range(num_snps):
                     yield tree
 
     def save(self, filepath: str) -> None:
         """
-        Saves the raw bytes instead of Newick. 
-        This perfectly persists your standardized internal node IDs.
+        Saves the raw bytes instead of Newick to preserve internal node IDs.
         """
         packed_bytes = np.array(self._tree_bytes, dtype=object)
         snps_array = np.array(self.snps, dtype=np.int32)
@@ -189,6 +186,15 @@ class PGTreeSequence:
     def _check_compatibility(self, other: "PGTreeSequence"):
         if self.total_snps != other.total_snps:
             raise ValueError("Both tree sequences must have the same total number of SNPs to compare.")
+
+    def rf_distance(self, other: "PGTreeSequence") -> np.ndarray:
+        self._check_compatibility(other)
+        distances = np.zeros(self.total_snps, dtype=np.float32)
+        
+        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
+            distances[i] = t1.rf_distance(t2)
+            
+        return distances.mean()
 
     @property
     def num_trees(self) -> int:
