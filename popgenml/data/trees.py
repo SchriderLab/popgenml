@@ -74,33 +74,35 @@ def extract_standardized_trees(
         
     return trees, snps
 
+import io
+from dataclasses import dataclass, InitVar
+from typing import Iterable, List, Iterator
+
 @dataclass
 class PGTreeSequence:
-    r"""
-    A representation of a sequence of marginal trees mapped to SNP counts.
-
-    This class provides tools to compare two different tree sequences (e.g., 
-    predicted vs. true simulated trees) site-by-site using topological 
-    metrics and coalescent time errors, as well as structural breakpoint distances.
-
-    Attributes:
-        trees (List[tskit.Tree]): A list of marginal trees.
-        snps (List[int]): A list of the number of SNPs corresponding to each tree.
     """
-    trees: List[tskit.Tree]
+    A representation of a sequence of marginal trees mapped to SNP counts.
+    Accepts standard trees on instantiation but compresses them internally 
+    into native bytes to prevent OOM errors while preserving all node metadata.
+    """
+    # InitVar ensures 'trees' is accepted in __init__ but NOT kept on the object,
+    # allowing the garbage collector to free the heavy C-bindings.
+    trees: InitVar[Iterable[tskit.Tree]]
     snps: List[int]
-    
-    def __post_init__(self):
-        r"""
-        Validates the initialization parameters and computes the total sequence length.
-        
-        Raises:
-            ValueError: If the number of trees does not match the number of SNP intervals.
-        """
-        if len(self.trees) != len(self.snps):
-            raise ValueError("Length of 'trees' and 'snps' must be identical.")
+
+    def __post_init__(self, trees: Iterable[tskit.Tree]):
         self.total_snps = sum(self.snps)
+        self._tree_bytes = []
         
+        # Compress each tree sequence into raw bytes immediately.
+        for t in trees:
+            buf = io.BytesIO()
+            t.tree_sequence.dump(buf)
+            self._tree_bytes.append(buf.getvalue())
+            
+        if len(self._tree_bytes) != len(self.snps):
+            raise ValueError("Length of 'trees' and 'snps' must be identical.")
+
     @classmethod
     def from_tskit(
         cls, 
@@ -108,150 +110,85 @@ class PGTreeSequence:
         samples_to_keep: Optional[List[int]] = None,
         positions: Optional[np.ndarray] = None 
     ) -> "PGTreeSequence":
-        r"""
-        Constructs a PGTreeSequence instance from an existing tskit TreeSequence.
-
-        Iterates through the local trees, counting valid SNPs within each tree's 
-        genomic interval `[left, right)`, and extracts each local tree into an 
-        isolated topology.
-
-        Parameters
-        ----------
-        ts : tskit.TreeSequence
-            The input tree sequence to parse.
-        samples_to_keep : list of int, optional
-            A list of sample node IDs to retain. If provided, the tree sequence is 
-            simplified down to these samples before processing.
-        positions : np.ndarray, optional
-            An array of valid physical positions to count as SNPs. Must be 0-based 
-            to correctly match tskit's half-open intervals. If None, valid positions 
-            are inferred from segregating sites in the genotype matrix.
-
-        Returns
-        -------
-        PGTreeSequence
-            An instance containing the extracted trees and their SNP counts.
-        """
-        if samples_to_keep is not None:
-            ts = ts.simplify(samples=samples_to_keep)
-            
-        # ---------------------------------------------------------
-        # Use provided positions, or fallback to the tree sequence's sites
-        # ---------------------------------------------------------
+        
+        # ... [Keep your exact positions/filter logic here] ...
         if positions is not None:
-            # Assume the user provided the already-filtered valid positions
             valid_positions = np.array(positions)
         elif ts.num_sites > 0:
             G = ts.genotype_matrix()
-            is_ref = (G == 0)
-            is_alt = (G == 1)
-            valid_sites_mask = is_ref.any(axis=1) & is_alt.any(axis=1)
+            valid_sites_mask = (G == 0).any(axis=1) & (G == 1).any(axis=1)
             valid_positions = ts.sites_position[valid_sites_mask]
         else:
             valid_positions = np.array([])
             
-        trees = []
         snps = []
-        
         for tree in ts.trees():
-            # Count the exact number of original SNPs falling in this physical interval
             left, right = tree.interval
-            num_valid = int(np.sum((valid_positions > left) & (valid_positions <= right)))
-            snps.append(num_valid)
+            snps.append(int(np.sum((valid_positions > left) & (valid_positions <= right))))
             
-            tables = tskit.TableCollection(sequence_length=tree.span)
-            old_to_new = {}
-            
-            samples = sorted(list(tree.samples())) # Prevent leaf-shuffling bug
-            for u in samples:
-                old_to_new[u] = tables.nodes.add_row(time=tree.time(u), flags=tskit.NODE_IS_SAMPLE)
+        # GENERATOR TWEAK: Instead of building a massive list in memory before 
+        # instantiation, yield the trees lazily into the constructor.
+        def generate_standardized_trees():
+            for tree in ts.trees():
+                tables = tskit.TableCollection(sequence_length=tree.span)
+                old_to_new = {}
                 
-            internal_nodes = [u for u in tree.nodes() if not tree.is_sample(u)]
-            internal_nodes.sort(key=lambda u: tree.time(u))
-            
-            for u in internal_nodes:
-                old_to_new[u] = tables.nodes.add_row(time=tree.time(u))
-                
-            for u in tree.nodes():
-                for c in tree.children(u):
-                    tables.edges.add_row(
-                        left=0, right=tree.span, 
-                        parent=old_to_new[u], child=old_to_new[c]
-                    )
+                samples = sorted(list(tree.samples()))
+                for u in samples:
+                    old_to_new[u] = tables.nodes.add_row(time=tree.time(u), flags=tskit.NODE_IS_SAMPLE)
                     
-            tables.sort()
-            new_ts = tables.tree_sequence()
-            trees.append(new_ts.first(sample_lists = True))
-            
-        return cls(trees=trees, snps=snps)
-    
-    def save(self, filepath: str) -> None:
-        r"""
-        Saves the PGTreeSequence to a concise, compressed disk format (.npz).
-        
-        Serializes the marginal trees into high-precision Newick strings to preserve 
-        coalescent times and topologies, and stores the SNP counts as a native array.
+                internal_nodes = [u for u in tree.nodes() if not tree.is_sample(u)]
+                internal_nodes.sort(key=lambda u: tree.time(u))
+                
+                for u in internal_nodes:
+                    old_to_new[u] = tables.nodes.add_row(time=tree.time(u))
+                    
+                for u in tree.nodes():
+                    for c in tree.children(u):
+                        tables.edges.add_row(
+                            left=0, right=tree.span, 
+                            parent=old_to_new[u], child=old_to_new[c]
+                        )
+                tables.sort()
+                new_ts = tables.tree_sequence()
+                yield new_ts.first(sample_lists=True)
 
-        Args:
-            filepath (str): The destination path (e.g., 'model_output.npz').
+        return cls(trees=generate_standardized_trees(), snps=snps)
+
+    def _iter_site_trees(self) -> Iterator[tskit.Tree]:
+        """Lazily reloads the tskit struct from bytes only when iterating."""
+        for t_bytes, num_snps in zip(self._tree_bytes, self.snps):
+            if num_snps > 0:
+                ts_reloaded = tskit.load(io.BytesIO(t_bytes))
+                tree = ts_reloaded.first()
+                for _ in range(num_snps):
+                    yield tree
+
+    def save(self, filepath: str) -> None:
         """
-        # precision=14 prevents floating-point truncation of coalescent times
-        newicks = np.array([tree.newick(precision=14) for tree in self.trees], dtype=str)
+        Saves the raw bytes instead of Newick. 
+        This perfectly persists your standardized internal node IDs.
+        """
+        packed_bytes = np.array(self._tree_bytes, dtype=object)
         snps_array = np.array(self.snps, dtype=np.int32)
-        
-        np.savez_compressed(filepath, newicks=newicks, snps=snps_array)
+        np.savez_compressed(filepath, tree_bytes=packed_bytes, snps=snps_array)
 
     @classmethod
     def load(cls, filepath: str) -> "PGTreeSequence":
-        r"""
-        Loads a PGTreeSequence from a compressed .npz archive.
-        
-        Reads the high-precision Newick strings, converts them back to tskit.Tree 
-        objects, and strictly re-standardizes the node IDs (leaves 0 to n-1, 
-        internal nodes ascending by time) to guarantee metric compatibility.
-
-        Args:
-            filepath (str): The path to the saved .npz file.
-
-        Returns:
-            PGTreeSequence: The restored tree sequence object.
-        """
-        data = np.load(filepath)
+        data = np.load(filepath, allow_pickle=True)
         snps = data['snps'].tolist()
-        newicks = data['newicks']
+        tree_bytes = data['tree_bytes'].tolist()
         
-        trees = []
-        
-        for nw_str in newicks:
-            # Parse Newick back into a temporary tskit tree
-            raw_tree = tskit.load_newick(nw_str).first()
-            
-            # Re-standardize the parsed tree to strictly match the PGTreeSequence layout
-            tables = tskit.TableCollection(sequence_length=1.0)
-            old_to_new = {}
-            
-            samples = sorted(list(raw_tree.samples()))
-            for u in samples:
-                old_to_new[u] = tables.nodes.add_row(time=raw_tree.time(u), flags=tskit.NODE_IS_SAMPLE)
-                
-            internal_nodes = [u for u in raw_tree.nodes() if not raw_tree.is_sample(u)]
-            internal_nodes.sort(key=lambda u: raw_tree.time(u))
-            
-            for u in internal_nodes:
-                old_to_new[u] = tables.nodes.add_row(time=raw_tree.time(u))
-                
-            for u in raw_tree.nodes():
-                for child in raw_tree.children(u):
-                    tables.edges.add_row(
-                        left=0.0, right=1.0, 
-                        parent=old_to_new[u], child=old_to_new[child]
-                    )
-                    
-            tables.sort()
-            clean_ts = tables.tree_sequence()
-            trees.append(clean_ts.first(sample_lists=True))
-            
-        return cls(trees=trees, snps=snps)
+        # Bypass __init__ to avoid redundant byte re-serialization
+        inst = cls.__new__(cls)
+        inst.snps = snps
+        inst.total_snps = sum(snps)
+        inst._tree_bytes = tree_bytes
+        return inst
+
+    def _check_compatibility(self, other: "PGTreeSequence"):
+        if self.total_snps != other.total_snps:
+            raise ValueError("Both tree sequences must have the same total number of SNPs to compare.")
 
     def _iter_site_trees(self):
         r"""
