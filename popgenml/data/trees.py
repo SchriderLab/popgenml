@@ -200,151 +200,96 @@ class PGTreeSequence:
     def num_trees(self) -> int:
         return len(self._tree_bytes)
 
-    def rf_distance(self, other: "PGTreeSequence") -> np.ndarray:
-        r"""
-        Computes the Robinson-Foulds topological distance site-by-site.
-
-        Args:
-            other (PGTreeSequence): The tree sequence to compare against.
-
-        Returns:
-            np.ndarray: A 1D float32 array of length `total_snps` containing 
-            the RF distance at each site.
-        """
+    def rf_distance(self, other: "PGTreeSequence") -> float:
         self._check_compatibility(other)
-        distances = np.zeros(self.total_snps, dtype=np.float32)
+        total_dist = 0.0
         
-        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
-            distances[i] = t1.rf_distance(t2)
+        prev_t1, prev_t2 = None, None
+        prev_dist = 0.0
+        
+        for t1, t2 in zip(self._iter_site_trees(), other._iter_site_trees()):
+            # Only compute the metric if one of the tree topologies advanced
+            if t1 is not prev_t1 or t2 is not prev_t2:
+                prev_dist = t1.rf_distance(t2)
+                prev_t1, prev_t2 = t1, t2
+            total_dist += prev_dist
             
-        return distances.mean()
+        return float(total_dist / self.total_snps)
 
-    def kc_distance(self, other: "PGTreeSequence") -> np.ndarray:
-        r"""
-        Computes the Kendall-Colijn topological distance site-by-site.
-
-        Args:
-            other (PGTreeSequence): The tree sequence to compare against.
-
-        Returns:
-            np.ndarray: A 1D float32 array of length `total_snps` containing 
-            the KC distance at each site.
-        """
+    def kc_distance(self, other: "PGTreeSequence") -> float:
         self._check_compatibility(other)
-        distances = np.zeros(self.total_snps, dtype=np.float32)
+        total_dist = 0.0
         
-        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
-            distances[i] = t1.kc_distance(t2)
+        prev_t1, prev_t2 = None, None
+        prev_dist = 0.0
+        
+        for t1, t2 in zip(self._iter_site_trees(), other._iter_site_trees()):
+            if t1 is not prev_t1 or t2 is not prev_t2:
+                prev_dist = t1.kc_distance(t2)
+                prev_t1, prev_t2 = t1, t2
+            total_dist += prev_dist
             
-        return distances.mean()
+        return float(total_dist / self.total_snps)
 
-    def rms_log_coal_error(self, other: "PGTreeSequence") -> np.ndarray:
-        r"""
-        Computes the Root Mean Square (RMS) error of log coalescent times site-by-site.
-
-        For each site, this extracts the strictly positive node coalescent times 
-        from both trees, sorts them, aligns them up to the minimum length, and 
-        computes the RMS error of their log differences.
-
-        Args:
-            other (PGTreeSequence): The tree sequence to compare against.
-
-        Returns:
-            np.ndarray: A 1D float32 array of length `total_snps` containing 
-            the RMS log coalescent time error at each site.
-        """
+    def rms_log_coal_error(self, other: "PGTreeSequence") -> float:
         self._check_compatibility(other)
-        errors = np.zeros(self.total_snps, dtype=np.float32)
+        total_error = 0.0
         
-        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
-            c1 = sorted([t1.time(u) for u in t1.nodes() if t1.time(u) > 0])
-            c2 = sorted([t2.time(u) for u in t2.nodes() if t2.time(u) > 0])
-            
-            min_len = min(len(c1), len(c2))
-            if min_len > 0:
-                log_c1 = np.log(c1[:min_len])
-                log_c2 = np.log(c2[:min_len])
+        prev_t1, prev_t2 = None, None
+        prev_err = 0.0
+        
+        for t1, t2 in zip(self._iter_site_trees(), other._iter_site_trees()):
+            if t1 is not prev_t1 or t2 is not prev_t2:
+                c1 = sorted([t1.time(u) for u in t1.nodes() if t1.time(u) > 0])
+                c2 = sorted([t2.time(u) for u in t2.nodes() if t2.time(u) > 0])
                 
-                mse = np.mean((log_c1 - log_c2) ** 2)
-                errors[i] = np.sqrt(mse)
-            else:
-                errors[i] = 0.0
+                min_len = min(len(c1), len(c2))
+                if min_len > 0:
+                    log_c1 = np.log(c1[:min_len])
+                    log_c2 = np.log(c2[:min_len])
+                    mse = np.mean((log_c1 - log_c2) ** 2)
+                    prev_err = float(np.sqrt(mse))
+                else:
+                    prev_err = 0.0
+                    
+                prev_t1, prev_t2 = t1, t2
                 
-        return errors.mean()
+            total_error += prev_err
+            
+        return float(total_error / self.total_snps)
 
     def breakpoint_chamfer_distance(self, other: "PGTreeSequence") -> float:
-        r"""
-        Computes the symmetric Chamfer distance between the internal breakpoints 
-        of the two tree sequences.
-
-        A breakpoint is defined as the cumulative sum of SNPs at the boundary 
-        between two marginal trees. The symmetric Chamfer distance calculates the 
-        average distance from each breakpoint in Sequence 1 to its nearest neighbor 
-        in Sequence 2, plus the same from Sequence 2 to Sequence 1, divided by 2.
-
-        If a sequence has no internal breakpoints, the sequence boundaries 
-        (0 and total_snps) are used as fallback reference points.
-
-        Args:
-            other (PGTreeSequence): The tree sequence to compare against.
-
-        Returns:
-            float: The symmetric mean Chamfer distance in SNP units.
-        """
         self._check_compatibility(other)
         
-        # Calculate internal breakpoints (excluding the final boundary)
         bp1 = np.cumsum(self.snps)[:-1]
         bp2 = np.cumsum(other.snps)[:-1]
         
         if len(bp1) == 0 and len(bp2) == 0:
             return 0.0
             
-        # Fallback for sequences with no internal breakpoints:
-        # Distance to the nearest sequence boundary
-        if len(bp1) == 0:
-            bp1 = np.array([0, self.total_snps])
-        if len(bp2) == 0:
-            bp2 = np.array([0, self.total_snps])
+        if len(bp1) == 0: bp1 = np.array([0, self.total_snps])
+        if len(bp2) == 0: bp2 = np.array([0, self.total_snps])
             
-        # Compute pairwise absolute differences using broadcasting
-        diffs = np.abs(bp1[:, np.newaxis] - bp2[np.newaxis, :])
-        
-        # Find the minimum distance from each breakpoint to the other set
-        min_bp1_to_bp2 = np.min(diffs, axis=1)
-        min_bp2_to_bp1 = np.min(diffs, axis=0)
-        
-        # Return symmetric mean Chamfer distance
-        return float((np.mean(min_bp1_to_bp2) + np.mean(min_bp2_to_bp1)) / 2.0)
+        def directed_chamfer(a, b):
+            # O(N log N) nearest neighbor search replacing the O(N^2) memory matrix
+            idx = np.searchsorted(b, a)
+            idx_left = np.clip(idx - 1, 0, len(b) - 1)
+            idx_right = np.clip(idx, 0, len(b) - 1)
+            
+            dist_left = np.abs(a - b[idx_left])
+            dist_right = np.abs(a - b[idx_right])
+            
+            return np.minimum(dist_left, dist_right).mean()
+            
+        return float((directed_chamfer(bp1, bp2) + directed_chamfer(bp2, bp1)) / 2.0)
     
-    def symmetric_kl_divergence(self, other: "PGTreeSequence", epsilon: float = 1e-9) -> np.ndarray:
-        r"""
-        Computes the symmetric Kullback-Leibler (KL) divergence of implied site 
-        pattern distributions site-by-site.
-
-        Each branch defines a clade $c$. The probability of observing a mutation 
-        on that branch is modeled as $p(c) = \frac{l(c)}{\sum_{k} l(k)}$.
-        Additive smoothing ($\epsilon$) is applied to the union of all clades 
-        $C = C(T_1) \cup C(T_2)$ to avoid undefined logarithms, yielding smoothed 
-        distributions $P$ and $Q$.
-        
-        The metric returns:
-        $$D_{sKL}(T_1, T_2) = \frac{1}{2} \left( \sum_{c \in C} P(c) \log\left(\frac{P(c)}{Q(c)}\right) + \sum_{c \in C} Q(c) \log\left(\frac{Q(c)}{P(c)}\right) \right)$$
-
-        Args:
-            other (PGTreeSequence): The tree sequence to compare against.
-            epsilon (float): The small constant used for additive smoothing.
-
-        Returns:
-            np.ndarray: A 1D float32 array containing the symmetric KL divergence at each site.
-        """
+    def symmetric_kl_divergence(self, other: "PGTreeSequence", epsilon: float = 1e-9) -> float:
         self._check_compatibility(other)
-        divergences = np.zeros(self.total_snps, dtype=np.float32)
+        total_div = 0.0
 
         def get_clade_branch_lengths(tree: tskit.Tree) -> dict:
             clades = {}
             for u in tree.nodes():
-                # Ignore the root node itself as it doesn't have a branch above it
                 if tree.parent(u) != tskit.NULL:
                     bl = tree.branch_length(u)
                     if bl > 0:
@@ -352,34 +297,38 @@ class PGTreeSequence:
                         clades[clade] = bl
             return clades
 
-        for i, (t1, t2) in enumerate(zip(self._iter_site_trees(), other._iter_site_trees())):
-            c1_lengths = get_clade_branch_lengths(t1)
-            c2_lengths = get_clade_branch_lengths(t2)
-            
-            sum1 = sum(c1_lengths.values())
-            sum2 = sum(c2_lengths.values())
-            
-            p1_init = {c: l / sum1 for c, l in c1_lengths.items()} if sum1 > 0 else {}
-            p2_init = {c: l / sum2 for c, l in c2_lengths.items()} if sum2 > 0 else {}
-            
-            all_clades = set(p1_init.keys()).union(set(p2_init.keys()))
-            
-            if not all_clades:
-                divergences[i] = 0.0
-                continue
+        prev_t1, prev_t2 = None, None
+        prev_div = 0.0
+
+        for t1, t2 in zip(self._iter_site_trees(), other._iter_site_trees()):
+            if t1 is not prev_t1 or t2 is not prev_t2:
+                c1_lengths = get_clade_branch_lengths(t1)
+                c2_lengths = get_clade_branch_lengths(t2)
                 
-            # Apply additive smoothing and construct arrays
-            P_smoothed = np.array([p1_init.get(c, 0.0) + epsilon for c in all_clades], dtype=np.float64)
-            Q_smoothed = np.array([p2_init.get(c, 0.0) + epsilon for c in all_clades], dtype=np.float64)
+                sum1 = sum(c1_lengths.values())
+                sum2 = sum(c2_lengths.values())
+                
+                p1_init = {c: l / sum1 for c, l in c1_lengths.items()} if sum1 > 0 else {}
+                p2_init = {c: l / sum2 for c, l in c2_lengths.items()} if sum2 > 0 else {}
+                
+                all_clades = set(p1_init.keys()).union(set(p2_init.keys()))
+                
+                if not all_clades:
+                    prev_div = 0.0
+                else:
+                    P_smoothed = np.array([p1_init.get(c, 0.0) + epsilon for c in all_clades], dtype=np.float64)
+                    Q_smoothed = np.array([p2_init.get(c, 0.0) + epsilon for c in all_clades], dtype=np.float64)
+                    
+                    P = P_smoothed / np.sum(P_smoothed)
+                    Q = Q_smoothed / np.sum(Q_smoothed)
+                    
+                    kl_P_Q = np.sum(P * np.log(P / Q))
+                    kl_Q_P = np.sum(Q * np.log(Q / P))
+                    
+                    prev_div = 0.5 * (kl_P_Q + kl_Q_P)
+                    
+                prev_t1, prev_t2 = t1, t2
+                
+            total_div += prev_div
             
-            # Re-normalize to sum to 1
-            P = P_smoothed / np.sum(P_smoothed)
-            Q = Q_smoothed / np.sum(Q_smoothed)
-            
-            # Compute symmetric KL divergence
-            kl_P_Q = np.sum(P * np.log(P / Q))
-            kl_Q_P = np.sum(Q * np.log(Q / P))
-            
-            divergences[i] = 0.5 * (kl_P_Q + kl_Q_P)
-            
-        return divergences.mean()
+        return float(total_div / self.total_snps)
