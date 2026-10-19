@@ -190,33 +190,9 @@ class PGTreeSequence:
         if self.total_snps != other.total_snps:
             raise ValueError("Both tree sequences must have the same total number of SNPs to compare.")
 
-    def _iter_site_trees(self):
-        r"""
-        Generates the corresponding marginal tree for each individual SNP site.
-
-        This flattens the chunked tree representations into a continuous 
-        site-by-site generator, naturally handling comparisons between 
-        tree sequences with mismatched internal breakpoints.
-
-        Yields:
-            tskit.Tree: The marginal tree at the current SNP site.
-        """
-        for tree, num_snps in zip(self.trees, self.snps):
-            for _ in range(num_snps):
-                yield tree
-
-    def _check_compatibility(self, other: "PGTreeSequence"):
-        r"""
-        Ensures both sequences span the same total number of SNPs.
-
-        Args:
-            other (PGTreeSequence): The other tree sequence to compare against.
-
-        Raises:
-            ValueError: If the total number of SNPs differs between the two sequences.
-        """
-        if self.total_snps != other.total_snps:
-            raise ValueError("Both tree sequences must have the same total number of SNPs to compare.")
+    @property
+    def num_trees(self) -> int:
+        return len(self._tree_bytes)
 
     def rf_distance(self, other: "PGTreeSequence") -> np.ndarray:
         r"""
