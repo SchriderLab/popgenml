@@ -158,7 +158,7 @@ class PGTreeSequence:
         for t_bytes, num_snps in zip(self._tree_bytes, self.snps):
             if num_snps > 0:
                 ts_reloaded = pickle.loads(t_bytes)
-                tree = ts_reloaded.first()
+                tree = ts_reloaded.first(sample_lists = True)
                 for _ in range(num_snps):
                     yield tree
 
