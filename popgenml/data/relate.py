@@ -503,8 +503,7 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
         - External RELATE binary and pre-configured command templates: `rcmd`, `relate_cmd`.
         - Supporting functions: `write_to_ms`, `read_anc`.
     """
-    if N is None:
-        N = (X.shape[1] / (4 * mu * L)) / harmonic_number(X.shape[0])
+
     
     temp_dir = tempfile.TemporaryDirectory()
     
@@ -565,10 +564,16 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     if ofile[-1] == '_':
         ofile = ofile[:-1]
     
-    if not diploid:
-        N *= 2
+    if N is None:
+        # Estimate N_hap directly using Watterson's estimator
+        # X.shape[1] = segregating sites, X.shape[0] = number of haplotypes
+        theta_w = X.shape[1] / harmonic_number(X.shape[0])
+        N_hap = theta_w / (2 * mu * L)
+    else:
+        # If the user provided individual N, convert to N_hap
+        N_hap = 2 * N if diploid else N
     
-    cmd_ = relate_cmd.format(mu, N, haps[0], 
+    cmd_ = relate_cmd.format(mu, N_hap, haps[0], 
                              samples[0], os.path.abspath(map_file), 
                              ofile, odir, 'All')
     if not verbose:
