@@ -565,7 +565,10 @@ def relate(X, sites, n_samples, mu, r, L, N = None, diploid = False, verbose = F
     if ofile[-1] == '_':
         ofile = ofile[:-1]
     
-    cmd_ = relate_cmd.format(mu, 2 * N, haps[0], 
+    if not diploid:
+        N *= 2
+    
+    cmd_ = relate_cmd.format(mu, N, haps[0], 
                              samples[0], os.path.abspath(map_file), 
                              ofile, odir, 'All')
     if not verbose:
