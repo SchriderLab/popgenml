@@ -1001,19 +1001,13 @@ class DiscoalSimulator(BaseSimulator):
             - ``'intervals'`` (list of tuple of int):
               Physical genomic coordinates $[l, r)$ spanning each tree in ``'ts'``.
         """
-        fd, out_filename = tempfile.mkstemp(dir='/tmp')
-        os.close(fd)  # Close the file descriptor; os.system will handle the writing
-
-        # Execute the command and redirect stdout (>) to the temporary file.
-        os.system(f"{cmd_} > {out_filename}")
-
-        lines = []
-        try:
-            with open(out_filename, 'r') as f:
-                lines = [line.rstrip() for line in f]
-        finally:
-            if os.path.exists(out_filename):
-                os.remove(out_filename)
+        args = shlex.split(cmd_)
+        
+        # Run and capture output into memory
+        result = subprocess.run(args, capture_output=True, text=True, check=True)
+        
+        # splitlines() handles the line breaks, and we strip any extra whitespace
+        lines = [line.rstrip() for line in result.stdout.splitlines()]
 
         # delete the unnecessary lines at the top
         while True:
