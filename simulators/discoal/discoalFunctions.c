@@ -2299,7 +2299,7 @@ void makeGametesMS(int argc,const char *argv[]){
 	printf("\n//\nsegsites: %d",mutNumber);
 	if(mutNumber > 0) printf("\npositions: ");
 	for(i = 0; i < mutNumber; i++)
-		fprintf(stdout,"%6.6lf ",allMuts[i] );
+		fprintf(stdout,"%.17g ",allMuts[i] );
 	fprintf(stdout,"\n");
 
 /* Phase 3 optimization: Pre-compute presence matrix */
