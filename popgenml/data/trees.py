@@ -261,8 +261,8 @@ class PGTreeSequence:
     def breakpoint_chamfer_distance(self, other: "PGTreeSequence") -> float:
         self._check_compatibility(other)
         
-        bp1 = np.cumsum(self.snps)[:-1]
-        bp2 = np.cumsum(other.snps)[:-1]
+        bp1 = np.cumsum(self.snps)[:-1].astype(np.float32)
+        bp2 = np.cumsum(other.snps)[:-1].astype(np.float32)
         
         bp1 /= np.sum(self.snps)
         bp2 /= np.sum(self.snps)
