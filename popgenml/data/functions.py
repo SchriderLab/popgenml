@@ -66,31 +66,14 @@ def flip(arr):
     return arr_flipped
 
 def newick_to_tree(
-    string, *, min_edge_length=0, span=1, time_units=None, node_name_key=None, multiplier = 1.
-) -> tskit.TreeSequence:
-    r"""
-    Create a tree sequence representation of the specified newick string.
-
-    The tree sequence will contain a single tree, as specified by the newick. All
-    leaf nodes will be marked as samples (``tskit.NODE_IS_SAMPLE``). Newick names and
-    comments will be written to the node metadata. This can be accessed using e.g.
-    ``ts.node(0).metadata["name"]``.
-
-    :param string string: Newick string
-    :param float min_edge_length: Replace any edge length shorter than this value by this
-        value. Unlike newick, tskit doesn't support zero or negative edge lengths, so
-        setting this argument to a small value is necessary when importing trees with
-        zero or negative lengths.
-    :param float span: The span of the tree, and therefore the
-        :attr:`~TreeSequence.sequence_length` of the returned tree sequence.
-    :param str time_units: The value assigned to the :attr:`~TreeSequence.time_units`
-        property of the resulting tree sequence. Default: ``None`` resulting in the
-        time units taking the default of :attr:`tskit.TIME_UNITS_UNKNOWN`.
-    :param str node_name_key: The metadata key used for the node names. If ``None``
-        use the string ``"name"``, as in the example of accessing node metadata above.
-        Default ``None``.
-    :return: A tree sequence consisting of a single tree.
-    """
+    string,
+    *,
+    min_edge_length=0,
+    span=1,
+    time_units=None,
+    node_name_key=None,
+    multiplier=1.0,
+) -> tskit.Tree:
     trees = newick.loads(string)
     if len(trees) > 1:
         raise ValueError("Only one tree can be imported from a newick string")
@@ -103,58 +86,72 @@ def newick_to_tree(
         tables.time_units = time_units
     if node_name_key is None:
         node_name_key = "name"
-    nodes = tables.nodes
-    nodes.metadata_schema = tskit.MetadataSchema(
-        {
-            "codec": "json",
-            "type": "object",
-            "properties": {
-                node_name_key: {
-                    "type": ["string"],
-                    "description": "Name from newick file",
-                },
-                "comment": {
-                    "type": ["string"],
-                    "description": "Comment from newick file",
-                },
+    
+    tables.nodes.metadata_schema = tskit.MetadataSchema({
+        "codec": "json",
+        "type": "object",
+        "properties": {
+            node_name_key: {
+                "type": ["string"],
+                "description": "Name from newick file",
             },
-        }
-    )
-            
-    ii = 0
-    n_leaf_nodes = 0
+            "comment": {
+                "type": ["string"],
+                "description": "Comment from newick file",
+            },
+        },
+    })
+    
+    leaves = []
     for newick_node in tree.walk():
-        if len(newick_node.descendants) == 0:
-            n_leaf_nodes += 1
         newick_node.length *= multiplier
-
+        if len(newick_node.descendants) == 0:
+            leaves.append(newick_node)
+    
+    # 1. Add individuals and pre-allocate sample leaf nodes in 0 .. n_samples - 1 order
+    leaves.sort(key=lambda n: int(n.name))
+    for _ in range(len(leaves)):
+        tables.individuals.add_row(flags=0)
+    
     id_map = {}
-
+    for leaf in leaves:
+        sample_id = int(leaf.name)
+        metadata = {node_name_key: leaf.name}
+        if leaf.comment:
+            metadata["comment"] = leaf.comment
+        node_id = tables.nodes.add_row(
+            flags=tskit.NODE_IS_SAMPLE,
+            time=0.0,
+            metadata=metadata,
+            individual=sample_id,
+        )
+        assert node_id == sample_id
+        id_map[leaf] = node_id
+    
     def get_or_add_node(newick_node, time):
         if newick_node not in id_map:
-            flags = tskit.NODE_IS_SAMPLE if len(newick_node.descendants) == 0 else 0
             metadata = {}
             if newick_node.name:
                 metadata[node_name_key] = newick_node.name
             if newick_node.comment:
                 metadata["comment"] = newick_node.comment
-                
-            if newick_node.name:
-                id_map[newick_node] = tables.nodes.add_row(
-                    flags=flags, time = time, metadata=metadata, individual = int(newick_node.name)
-                )
-            else:
-                id_map[newick_node] = tables.nodes.add_row(
-                    flags=flags, time = time, metadata=metadata, individual = -1
-                )
+            id_map[newick_node] = tables.nodes.add_row(
+                flags=0, time=time, metadata=metadata, individual=-1
+            )
+        else:
+            # Update time for pre-allocated leaf nodes during top-down walk
+            node_id = id_map[newick_node]
+            tables.nodes[node_id] = tables.nodes[node_id].replace(time=time)
+        
         return id_map[newick_node]
-
-    root = next(tree.walk())
-    get_or_add_node(root, 0)
     
-    edges = []
+    # 2. Walk top-down from root to compute relative node times and edges
+    root = next(tree.walk())
+    get_or_add_node(root, 0.0)
+    
     for newick_node in tree.walk():
         node_id = id_map[newick_node]
+        parent_time = tables.nodes[node_id].time
         for child in newick_node.descendants:
             length = max(child.length, min_edge_length)
             if length <= 0:
@@ -163,33 +160,25 @@ def newick_to_tree(
                     " <= 0. Set min_edge_length to force lengths to a"
                     " minimum size"
                 )
-            child_node_id = get_or_add_node(child, tables.nodes[node_id].time - length)
+            child_node_id = get_or_add_node(child, parent_time - length)
             tables.edges.add_row(0, span, node_id, child_node_id)
-                        
-    # Rewrite node times to fit the tskit convention of zero at the youngest leaf
+    
+    # 3. Shift node times so leaves are at 0.0 and internal nodes are > 0.0
     nodes = list(tables.nodes.copy())
     youngest = min(tables.nodes.time)
-    
     tables.nodes.clear()
-    individuals = tables.individuals
     
-    for k in range(n_leaf_nodes):
-        individuals.add_row(flags = 0)
-    
-    ii = n_leaf_nodes
-    
-    ids = []
     for node in nodes:
-        if "name" in node.metadata.keys():
-            id_ = int(node.metadata["name"])
+        if node.flags & tskit.NODE_IS_SAMPLE:
+            shifted_time = 0.0
         else:
-            id_ = -1
-            
-        tables.nodes.append(node.replace(time=node.time - youngest + root.length))
-        
+            shifted_time = node.time - youngest + root.length
+        tables.nodes.append(node.replace(time=shifted_time))
+    
     tables.sort()
     
-    return tables.tree_sequence()
+    # Return the seeked first Tree (not an unseeked Tree or raw TreeSequence)
+    return tables.tree_sequence().first()
 
 def compute_coalescent_inverses(times):
     r"""

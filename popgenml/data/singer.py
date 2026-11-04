@@ -106,16 +106,13 @@ def singer(
             sample lists initialized for topological distance calculations.
     """
 
-    # 1. Protect sequence boundaries without shifting internal duplicates
     if positions.max() <= 1.0:
         positions = positions * L
         
     positions = np.round(positions).astype(np.int32)
     
-    # Simply clip to bounds to prevent Singer's ws > 0 crash at the ends
     positions = np.clip(positions, 1, int(L) - 1)
             
-    # Calculate Watterson's estimate if n_est is not explicitly provided
     if n_est is None:
         num_haplotypes, num_sites = alignment.shape
         h_n = harmonic_number(num_haplotypes)
@@ -128,7 +125,6 @@ def singer(
         temp_vcf_prefix = os.path.join(temp_dir, "temp_input")
         temp_vcf_path = f"{temp_vcf_prefix}.vcf"
         
-        # Route SINGER outputs to a temp prefix if none was provided
         run_prefix = output_prefix if output_prefix is not None else os.path.join(temp_dir, "singer_out")
         
         write_vcf(alignment, positions, L, temp_vcf_path)
@@ -167,13 +163,11 @@ def singer(
             
             subprocess.run(converter_command, check=True, capture_output=True)
             
-            # ... inside your singer() function ...
             tree_pattern = f"{run_prefix}*.trees"
             infer_files = sorted(glob.glob(tree_pattern))
             
             for infer_file in infer_files:
                 ts = tskit.load(infer_file)
-                # Pass the exact physical positions used to generate the VCF
                 yield PGTreeSequence.from_tskit(ts, positions=positions)
                 
         except subprocess.CalledProcessError as e:

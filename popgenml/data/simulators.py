@@ -1003,7 +1003,7 @@ class DiscoalSimulator(BaseSimulator):
         """
         args = shlex.split(cmd_)
         
-        # Run and capture output into memory
+        # run and capture output into memory
         result = subprocess.run(args, capture_output=True, text=True, check=True)
         
         # splitlines() handles the line breaks, and we strip any extra whitespace
@@ -1054,13 +1054,23 @@ class DiscoalSimulator(BaseSimulator):
             else:
                 break
 
-        # Fast-forward to segregating sites matrix
+        # fast-forward to segregating sites matrix
         start = 0
         while lines[start] != '//':
             start += 1
-
+        
         start += 1
         lines = lines[start:]
+        n_segsites = int(lines[0].split()[1])
+        
+        print(n_segsites)
+        if n_segsites == 0:
+            return {
+                'x': np.empty((0, 0), dtype=np.uint8),
+                'pos': np.array([]),
+                'ts': [],
+                'intervals': [],
+            }
         pos = np.array(list(map(float, lines[1].split()[1:])))
 
         trees_ = []
@@ -1068,8 +1078,7 @@ class DiscoalSimulator(BaseSimulator):
         n_snps = 0
 
         intervals = np.array(intervals)
-
-        # Filter trees and intervals to only those containing actual SNPs
+        
         for ix in range(len(trees)):
             l, r = intervals[ix]
 
@@ -1083,12 +1092,14 @@ class DiscoalSimulator(BaseSimulator):
 
                 intervals_.append((l, r))
 
-        # Parse binary genotype sequence
-        x = []
-        for line in lines[2:]:
-            x.append(np.fromstring(line, 'u1') - ord('0'))
-
+        x = [
+            np.fromstring(line, 'u1') - ord('0')
+            for line in lines[2:]
+            if line.strip()
+        ]
         x = np.array(x, dtype=np.uint8)
+
+        print(x.shape, len(trees_))
 
         result = {}
         result['x'] = x
