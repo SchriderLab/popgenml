@@ -2188,7 +2188,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 			newickRecurse(aNode->rightChild,site,0.0);
 			printf(")");
 			if(nAncestorsHere(aNode, site) != sampleSize){
-				printf(":%.7g",(aNode->branchLength + tempTime)*0.5);
+				printf(":%.15g",(aNode->branchLength + tempTime)*0.5);
 			}
 			
 		}
