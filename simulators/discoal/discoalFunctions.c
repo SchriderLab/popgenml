@@ -2207,7 +2207,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 	}
 	else{
 		if(isLeaf(aNode)){
-			printf("%d:%.7g",aNode->id, \
+			printf("%d:%.15g",aNode->id, \
                     (aNode->branchLength +tempTime)*0.5);
 		}
 		else{ //recombination node
