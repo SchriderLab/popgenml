@@ -13,6 +13,7 @@ from .functions import harmonic_number
 import importlib.resources
 from .trees import PGTreeSequence
 import sys
+import re
 
 
 def write_vcf(alignment: np.ndarray, positions: np.ndarray, L: float, vcf_path: str) -> None:
@@ -64,71 +65,87 @@ def singer(
     L: float,
     output_prefix: str = None,
     n_est: float = None,
-    n_iters: int = 1,
+    n_iters: int = 100,
     thin: int = 20,
+    num_samples: int = 1,
 ) -> Iterator['PGTreeSequence']:
     r"""
-    Runs the SINGER MCMC algorithm to infer Ancestral Recombination Graphs (ARGs) 
-    from genetic alignment data, yielding the sampled topologies as tree sequences.
+    Runs the SINGER MCMC algorithm to infer Ancestral Recombination Graphs (ARGs)
+    from genetic alignment data, yielding the requested number of posterior samples
+    as tree sequences.
 
     This function orchestrates the complete SINGER inference pipeline:
       1. Scales relative SNP positions (if provided) to absolute positions based on L.
-      2. Uses the provided effective population size (n_est) or dynamically estimates it 
+      2. Uses the provided effective population size (n_est) or dynamically estimates it
          using Watterson's estimator.
       3. Writes the haplotype alignment to a temporary VCF file.
-      4. Executes the SINGER binary to sample ARGs via MCMC.
-      5. Runs SINGER's Python converter script to compile node files into `.trees` files.
-      6. Wraps the resulting tskit TreeSequences into PGTreeSequence objects, extracting 
+      4. Executes the SINGER binary to sample ARGs via MCMC across `n_iters` thinned steps.
+      5. Runs SINGER's Python converter script on the final `num_samples` post-burn-in
+         node files to compile them into `.trees` files.
+      6. Wraps the resulting tskit TreeSequences into PGTreeSequence objects, extracting
          marginal trees and scaling absolute genomic boundaries back to 0.0 - 1.0 proportions.
 
     Args:
-        alignment (np.ndarray): A 2D integer array of shape (num_haplotypes, num_sites) 
+        alignment (np.ndarray): A 2D integer array of shape (num_haplotypes, num_sites)
             representing the genotype/haplotype matrix.
-        positions (np.ndarray): A 1D array of length `num_sites` containing the SNP 
-            positions. Can be relative (bounded 0.0 to 1.0) or absolute coordinates; 
+        positions (np.ndarray): A 1D array of length `num_sites` containing the SNP
+            positions. Can be relative (bounded 0.0 to 1.0) or absolute coordinates;
             if relative, they are automatically scaled by `L`.
-        L (float): The total sequence length in base pairs.
         mutation_rate (float): The per-base, per-generation mutation rate.
         recomb_rate (float): The per-base, per-generation recombination rate.
-        output_prefix (str, optional): The file path prefix for SINGER's intermediate files 
-            and `.trees` files. If None, all outputs are written to a temporary directory 
+        L (float): The total sequence length in base pairs.
+        output_prefix (str, optional): The file path prefix for SINGER's intermediate files
+            and `.trees` files. If None, all outputs are written to a temporary directory
             and deleted when iteration completes. Defaults to None.
-        n_est (float, optional): The effective population size (Ne). If None, it is 
+        n_est (float, optional): The effective population size (Ne). If None, it is
             dynamically estimated using Watterson's estimator. Defaults to None.
-        n_iters (int, optional): The number of MCMC iterations for SINGER to run. 
-            Defaults to 100.
-        thin (int, optional): The thinning interval for SINGER's MCMC sampling. 
-            Defaults to 20.
+        n_iters (int, optional): The total number of thinned MCMC steps (`-n`) for SINGER
+            to run (including burn-in). Defaults to 100.
+        thin (int, optional): The thinning interval (`-thin`, MCMC iterations between
+            adjacent saved steps) for SINGER's MCMC sampling. Defaults to 20.
+        num_samples (int, optional): The number of posterior ARG samples to convert and
+            yield from the end of the MCMC chain (after burn-in). Defaults to 1.
 
     Yields:
-        PGTreeSequence: An object containing the extracted marginal trees from a single 
-            MCMC sample, with genomic intervals normalized to a 0.0 - 1.0 scale, and 
-            sample lists initialized for topological distance calculations.
+        PGTreeSequence: An object containing the extracted marginal trees from a single
+            posterior MCMC sample, with genomic intervals normalized to a 0.0 - 1.0 scale,
+            and sample lists initialized for topological distance calculations.
     """
+    if num_samples < 1:
+        raise ValueError(f"num_samples must be at least 1, got {num_samples}.")
+
+    if n_iters < num_samples:
+        logging.warning(
+            f"n_iters ({n_iters}) is less than num_samples ({num_samples}); "
+            f"increasing n_iters to {num_samples}."
+        )
+        n_iters = num_samples
 
     if positions.max() <= 1.0:
         positions = positions * L
-        
+
     positions = np.round(positions).astype(np.int32)
-    
-    positions = np.clip(positions, 1, int(L) - 1)
-            
+
     if n_est is None:
         num_haplotypes, num_sites = alignment.shape
         h_n = harmonic_number(num_haplotypes)
         n_est = (num_sites / (4 * mutation_rate * L)) / h_n
-    
+
     ratio = recomb_rate / mutation_rate
-    singer_executable = "singer_master" # or "singer_master" depending on install
-    
+    singer_executable = "singer_master"  # or "singer_master" depending on install
+
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_vcf_prefix = os.path.join(temp_dir, "temp_input")
         temp_vcf_path = f"{temp_vcf_prefix}.vcf"
-        
-        run_prefix = output_prefix if output_prefix is not None else os.path.join(temp_dir, "singer_out")
-        
+
+        run_prefix = (
+            output_prefix
+            if output_prefix is not None
+            else os.path.join(temp_dir, "singer_out")
+        )
+
         write_vcf(alignment, positions, L, temp_vcf_path)
-        
+
         singer_command = [
             singer_executable,
             "-m", str(mutation_rate),
@@ -139,39 +156,46 @@ def singer(
             "-n", str(n_iters),
             "-thin", str(thin),
             "-Ne", str(n_est),
-            "-end", str(L)
+            "-end", str(L),
         ]
-        
+
         try:
-            
             subprocess.run(singer_command, check=True, capture_output=True)
-            
+
             node_pattern = f"{run_prefix}_nodes_*.txt"
             num_nodes = len(glob.glob(node_pattern))
-            
+
             if num_nodes == 0:
-                logging.warning(f"Singer produced no node files.")
+                logging.warning("Singer produced no node files.")
                 return
-            
+
+            start_idx = max(0, num_nodes - num_samples)
+
             converter_command = [
-                sys.executable, converter_script, 
+                sys.executable,
+                converter_script,
                 "-input", run_prefix,
                 "-output", run_prefix,
-                "-start", "0",
-                "-end", str(num_nodes)
+                "-start", str(start_idx),
+                "-end", str(num_nodes),
             ]
-            
+
             subprocess.run(converter_command, check=True, capture_output=True)
-            
+
             tree_pattern = f"{run_prefix}*.trees"
-            infer_files = sorted(glob.glob(tree_pattern))
-            
-            for infer_file in infer_files:
+            infer_files = sorted(
+                glob.glob(tree_pattern),
+                key=lambda p: int(re.search(r"(\d+)\.trees$", p).group(1))
+                if re.search(r"(\d+)\.trees$", p)
+                else p,
+            )
+
+            for infer_file in infer_files[-num_samples:]:
                 ts = tskit.load(infer_file)
                 yield PGTreeSequence.from_tskit(ts, positions=positions)
-                
+
         except subprocess.CalledProcessError as e:
-            error_output = e.stderr.decode('utf-8').strip() if e.stderr else str(e)
+            error_output = e.stderr.decode("utf-8").strip() if e.stderr else str(e)
             logging.error(f"Singer or converter failed. Error: {error_output}")
             return
 

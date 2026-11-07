@@ -112,20 +112,30 @@ class PGTreeSequence:
         if samples_to_keep is not None:
             ts = ts.simplify(samples=samples_to_keep)
 
-        if positions is not None:
-            valid_positions = np.array(positions)
-        elif ts.num_sites > 0:
-            G = ts.genotype_matrix()
-            valid_sites_mask = (G == 0).any(axis=1) & (G == 1).any(axis=1)
-            valid_positions = ts.sites_position[valid_sites_mask]
-        else:
-            valid_positions = np.array([])
+        valid_positions = positions
             
+        valid_positions = np.array(sorted(valid_positions), dtype = np.int32)
+            
+        print(valid_positions[0], valid_positions[-1])
+            
+        
         snps = []
+        is_first = True
+        
         for tree in ts.trees():
             left, right = tree.interval
-            snps.append(int(np.sum((valid_positions > left) & (valid_positions <= right))))
+            is_last_tree = (right == ts.sequence_length)
             
+            if is_first or is_last_tree:
+                print(left, right)
+            
+            in_interval = (valid_positions >= left) & (
+                (valid_positions <= right) if is_last_tree else (valid_positions < right)
+            )
+            snps.append(int(np.sum(in_interval)))
+            
+            is_first = False
+                        
         def generate_standardized_trees():
             for tree in ts.trees():
                 tables = tskit.TableCollection(sequence_length=tree.span)

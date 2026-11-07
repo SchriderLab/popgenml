@@ -16,6 +16,9 @@ def test_statistical_equivalency(sim_class1, sim_class2, sample_config, n_iters=
     S1 = []
     S2 = []
     
+    D1 = []
+    D2 = []
+    
     sim1 = sim_class1(sample_config)
     sim2 = sim_class2(sample_config)
     
@@ -23,13 +26,44 @@ def test_statistical_equivalency(sim_class1, sim_class2, sample_config, n_iters=
         sim1.set_seeds({'Nt' : i})
         sim2.set_seeds({'Nt' : i})
         
+        s1 = sim1.simulate(seeds = (i, i))
+        x1 = s1['x']
+        
+        s2 = sim2.simulate(seeds = (i, i))
+        x2 = s2['x']
+        
+        if hasattr(sim2, 'co'):
+            print(sim2.co)
+            
+        if hasattr(sim1, 'co'):
+            print(sim1.co)
+        
+        d1 = []
+        ts = s1['ts']
+        # try msprime then assume discoal
+        ts = ts.simplify(reduce_to_site_topology = True)
+        tree1 = ts.first()
+
+        ts = s2['ts']
+        
+        try:
+            ts = ts.simplify(reduce_to_site_topology = True)
+            tree = ts.first()
+        except:
+            tree = ts[0]
+  
+            
+        D2.extend(tree_to_distmat(tree))
+        D1.extend(tree_to_distmat(tree1))
+        
         S1.append(sim1.simulate(seeds=(i, i))['x'].shape[1])
         S2.append(sim2.simulate(seeds=(i, i))['x'].shape[1])
         
     stat, p_value = ks_2samp(S1, S2)
-    assert p_value > 0.01, f"{sim_class1.__name__} and {sim_class2.__name__} produced divergent site frequencies (p={p_value})"
+    assert p_value > 0.01, f"{sim_class1.__name__} and {sim_class2.__name__} produced divergent site frequencies... (p={p_value})"
 
-
+    stat, p_value = ks_2samp(D1, D2)
+    assert p_value > 0.01, f"{sim_class1.__name__} and {sim_class2.__name__} produced divergent pairwise TMRCAs... (p={p_value})"
 
 def run_simulator_tests():
     print('Running [Simulator Equivalency Tests]...')
@@ -41,7 +75,7 @@ L = 100000
 ploidy = 2
 
 [samples]
-pop1 = {'N0': 100, 'n': 2}
+pop1 = {'N0': 10000, 'n': 2}
 """
 
     cheby_config = """[base]
@@ -51,7 +85,7 @@ L = 100000
 ploidy = 2
 
 [samples]
-pop1 = {'Nt': 'ChebyshevHistory(target_snps=100, n_haps=4, volatility = 1.0, N_min = 10, N_max = 1e3)', 'n': 2}
+pop1 = {'Nt': 'ChebyshevHistory(target_snps=250, n_haps=4, volatility = 1.0, N_min = 10, N_max = 1e4)', 'n': 2}
 """
 
     print('  testing [discoal <=> msprime (constant pop)]...')
@@ -143,11 +177,11 @@ pop1 = {'N0': 10000, 'n': 2}
     
     N = 10000
     
+    n_sites = ret['x'].shape[1]
+    
     ts_est = next(singer(ret['x'], ret['pos'], mu, r, L))
-    ts = PGTreeSequence.from_tskit(ret['ts'])
-    
-    print(sum(ts.snps), sum(ts_est.snps))
-    
+    ts = PGTreeSequence.from_tskit(ret['ts'], positions = ret['pos'] * L)
+        
     print('[inference: singer] SUCCESS!')
 
     print('Running [ts comparisons: singer]')
@@ -163,6 +197,8 @@ pop1 = {'N0': 10000, 'n': 2}
         
     err = ts_est.breakpoint_chamfer_distance(ts)
     print('chamfer err = {}'.format(err))
+    
+    print(ts.num_trees, ts_est.num_trees)
     
     print('[ts comparisons: singer] SUCCESS!')
     

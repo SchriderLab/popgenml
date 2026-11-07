@@ -1063,7 +1063,6 @@ class DiscoalSimulator(BaseSimulator):
         lines = lines[start:]
         n_segsites = int(lines[0].split()[1])
         
-        print(n_segsites)
         if n_segsites == 0:
             return {
                 'x': np.empty((0, 0), dtype=np.uint8),
@@ -1098,8 +1097,6 @@ class DiscoalSimulator(BaseSimulator):
             if line.strip()
         ]
         x = np.array(x, dtype=np.uint8)
-
-        print(x.shape, len(trees_))
 
         result = {}
         result['x'] = x
