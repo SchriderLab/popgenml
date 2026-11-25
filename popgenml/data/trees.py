@@ -115,9 +115,6 @@ class PGTreeSequence:
         valid_positions = positions
             
         valid_positions = np.array(sorted(valid_positions), dtype = np.int32)
-            
-        print(valid_positions[0], valid_positions[-1])
-            
         
         snps = []
         is_first = True
@@ -125,9 +122,7 @@ class PGTreeSequence:
         for tree in ts.trees():
             left, right = tree.interval
             is_last_tree = (right == ts.sequence_length)
-            
-            if is_first or is_last_tree:
-                print(left, right)
+
             
             in_interval = (valid_positions >= left) & (
                 (valid_positions <= right) if is_last_tree else (valid_positions < right)
