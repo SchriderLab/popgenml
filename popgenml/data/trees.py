@@ -158,6 +158,64 @@ class PGTreeSequence:
 
         return cls(trees=generate_standardized_trees(), snps=snps)
 
+    @classmethod
+    def from_tree_list(
+        cls,
+        ts_list: List[tskit.TreeSequence],
+        intervals: np.ndarray,
+        samples_to_keep: Optional[List[int]] = None,
+        positions: Optional[np.ndarray] = None,
+    ) -> "PGTreeSequence":
+        """
+        Build a PGTreeSequence from a list of single-tree tskit.TreeSequence objects
+        (e.g., serialized from DiscoalSimulator) and their genomic intervals.
+        """
+        if len(ts_list) == 0 or positions is None or len(positions) == 0:
+            return cls(trees=[], snps=[])
+
+        intervals_arr = np.asarray(intervals, dtype=np.float64)
+        starts = intervals_arr[:, 0]
+        valid_positions = np.sort(np.asarray(positions, dtype=np.float64))
+
+        # Assign every SNP to its interval via binary search on interval starts
+        # so rounding at interval boundaries never drops or double-counts a site.
+        idx = np.clip(np.searchsorted(starts, valid_positions, side="right") - 1, 0, len(ts_list) - 1)
+        counts = np.bincount(idx, minlength=len(ts_list))
+
+        kept_indices = [i for i, c in enumerate(counts) if c > 0]
+        snps = [int(counts[i]) for i in kept_indices]
+
+        def generate_standardized_trees():
+            for i in kept_indices:
+                ts_i = ts_list[i]
+                if samples_to_keep is not None:
+                    ts_i = ts_i.simplify(samples=samples_to_keep)
+                tree = ts_i.first()
+
+                tables = tskit.TableCollection(sequence_length=tree.span)
+                old_to_new = {}
+
+                samples = sorted(list(tree.samples()))
+                for u in samples:
+                    old_to_new[u] = tables.nodes.add_row(time=tree.time(u), flags=tskit.NODE_IS_SAMPLE)
+
+                internal_nodes = [u for u in tree.nodes() if not tree.is_sample(u)]
+                internal_nodes.sort(key=lambda u: tree.time(u))
+
+                for u in internal_nodes:
+                    old_to_new[u] = tables.nodes.add_row(time=tree.time(u))
+
+                for u in tree.nodes():
+                    for c in tree.children(u):
+                        tables.edges.add_row(
+                            left=0, right=tree.span,
+                            parent=old_to_new[u], child=old_to_new[c],
+                        )
+                tables.sort()
+                yield tables.tree_sequence().first(sample_lists=True)
+
+        return cls(trees=generate_standardized_trees(), snps=snps)
+
     def _iter_site_trees(self) -> Iterator[tskit.Tree]:
         """Lazily reloads the tskit struct from pickled bytes only when iterating."""
         for t_bytes, num_snps in zip(self._tree_bytes, self.snps):
